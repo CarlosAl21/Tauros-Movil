@@ -56,18 +56,17 @@ export default function HomeScreen() {
       <TaurosCard style={styles.heroCard}>
         <View style={styles.heroTopRow}>
           <View style={styles.heroTextBlock}>
-            <TaurosPill label="Tauros Member" tone="accent" />
             <Text style={styles.heroTitle}>Hola, {user?.nombre ?? 'atleta'}</Text>
-            <Text style={styles.heroSubtitle}>Tu foco de hoy es completar la rutina y dejar constancia de cada carga.</Text>
+            <Text style={styles.heroSubtitle}>Rutina, ejercicios, eventos y horario en una sola vista limpia.</Text>
           </View>
           <Image source={require('../../assets/images/tauros-logo.png')} style={styles.logo} contentFit="contain" />
         </View>
 
         <View style={styles.heroStatsGrid}>
-          <TaurosStat label="Rutina activa" value={activePlan?.nombre ?? 'Sin plan'} icon={<MaterialCommunityIcons name="clipboard-text-outline" size={16} color="#f4ae1a" />} />
-          <TaurosStat label="Ejercicios completados" value={`${completedExercises}/${activeExercises.length}`} icon={<MaterialCommunityIcons name="check-circle-outline" size={16} color="#f4ae1a" />} />
-          <TaurosStat label="Peso actual" value={persistentWeight ? `${persistentWeight} kg` : 'No registrado'} icon={<MaterialCommunityIcons name="scale-bathroom" size={16} color="#f4ae1a" />} />
-          <TaurosStat label="Eventos activos" value={`${displayEvents.length}`} icon={<MaterialCommunityIcons name="calendar-star" size={16} color="#f4ae1a" />} />
+          <TaurosStat label="Rutina" value={activePlan?.nombre ?? 'Sin plan'} icon={<MaterialCommunityIcons name="clipboard-text-outline" size={16} color="#f4ae1a" />} />
+          <TaurosStat label="Avance" value={`${progress}%`} icon={<MaterialCommunityIcons name="check-circle-outline" size={16} color="#f4ae1a" />} />
+          <TaurosStat label="Peso" value={persistentWeight ? `${persistentWeight} kg` : 'Pendiente'} icon={<MaterialCommunityIcons name="scale-bathroom" size={16} color="#f4ae1a" />} />
+          <TaurosStat label="Eventos" value={`${displayEvents.length}`} icon={<MaterialCommunityIcons name="calendar-star" size={16} color="#f4ae1a" />} />
         </View>
 
         <View style={styles.progressBlock}>
@@ -85,7 +84,7 @@ export default function HomeScreen() {
         </View>
       </TaurosCard>
 
-      <TaurosSection title="Rutina de hoy" subtitle="Marca cada ejercicio cuando lo completes y añade la carga que usaste.">
+      <TaurosSection title="Rutina de hoy" subtitle="Vista rápida para abrir el entrenamiento actual.">
         <TaurosCard>
           <View style={styles.routineHeader}>
             <View style={{ flex: 1 }}>
@@ -103,7 +102,7 @@ export default function HomeScreen() {
                 <Pressable key={exercise.exerciseId} onPress={() => router.push({ pathname: '/ejercicio/[id]', params: { id: exercise.exerciseId } })} style={styles.exercisePreviewRow}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.exercisePreviewTitle}>{detail?.nombre ?? exercise.exerciseId}</Text>
-                    <Text style={styles.exercisePreviewMeta}>{exercise.series} series · {exercise.repeticiones} repeticiones · {exercise.carga}</Text>
+                    <Text style={styles.exercisePreviewMeta}>{exercise.series} series · {exercise.repeticiones} reps · {exercise.carga}</Text>
                   </View>
                   <MaterialCommunityIcons name={exercise.completado ? 'check-circle' : 'chevron-right'} size={20} color={exercise.completado ? '#45c46f' : '#f4ae1a'} />
                 </Pressable>
@@ -115,7 +114,7 @@ export default function HomeScreen() {
         </TaurosCard>
       </TaurosSection>
 
-      <TaurosSection title="Próximos eventos" subtitle="Los usuarios pueden registrarse directamente desde la app.">
+      <TaurosSection title="Próximos eventos" subtitle="Solo lo necesario para entrar o registrarte.">
         {upcomingEvents.map((event) => (
           <TaurosCard key={event.id} style={styles.compactCard}>
             <View style={styles.eventRow}>
@@ -137,7 +136,7 @@ export default function HomeScreen() {
         ))}
       </TaurosSection>
 
-      <TaurosSection title="Sugerencias del coach" subtitle="Se muestran en los módulos donde el backend permite contenido útil para el usuario.">
+      <TaurosSection title="Sugerencias" subtitle="Recomendaciones breves del sistema.">
         <TaurosCard>
           {routineSuggestions.map((suggestion) => (
             <View key={suggestion.id} style={styles.suggestionRow}>
@@ -161,7 +160,7 @@ export default function HomeScreen() {
         </TaurosCard>
       </TaurosSection>
 
-      <TaurosSection title="Horario de apertura" subtitle="Acceso rápido al horario del gimnasio y datos personales editables.">
+      <TaurosSection title="Horario" subtitle="Solo horarios y peso. Sin ruido extra.">
         <TaurosCard>
           <TaurosInfoRow label="Usuario" value={user?.nombre ?? 'Sin perfil'} />
           <View style={styles.smallSpacer} />
@@ -176,11 +175,6 @@ export default function HomeScreen() {
             </View>
           ))}
         </TaurosCard>
-        <Link href="/horarios" asChild>
-          <Pressable>
-            <TaurosButton label="Abrir horario del gym" />
-          </Pressable>
-        </Link>
       </TaurosSection>
     </TaurosScreen>
   );

@@ -11,6 +11,7 @@ export type TaurosExercise = {
   categoria: string;
   tipo: string;
   linkVideo: string;
+  linkAM?: string;
   maquina: TaurosMachine | null;
   series: string;
   repeticiones: string;
@@ -105,6 +106,7 @@ export const taurosExercises: TaurosExercise[] = [
     categoria: 'Pierna',
     tipo: 'Fuerza',
     linkVideo: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+    linkAM: 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&w=900&q=80',
     maquina: { numero: '11', nombre: 'Hack Squat' },
     series: '3 x 8 a 10',
     repeticiones: '8 a 10',
@@ -121,6 +123,7 @@ export const taurosExercises: TaurosExercise[] = [
     categoria: 'Pecho',
     tipo: 'Empuje',
     linkVideo: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
+    linkAM: 'https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&w=900&q=80',
     maquina: { numero: '4', nombre: 'Chest Press' },
     series: '4 x 10 a 12',
     repeticiones: '10 a 12',
@@ -137,6 +140,7 @@ export const taurosExercises: TaurosExercise[] = [
     categoria: 'Espalda',
     tipo: 'Tiron',
     linkVideo: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
+    linkAM: 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&w=900&q=80',
     maquina: { numero: '8', nombre: 'Lat Pulldown' },
     series: '4 x 10',
     repeticiones: '10',
@@ -153,6 +157,7 @@ export const taurosExercises: TaurosExercise[] = [
     categoria: 'Posterior',
     tipo: 'Bisagra',
     linkVideo: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4',
+    linkAM: 'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&w=900&q=80',
     maquina: null,
     series: '3 x 12',
     repeticiones: '12',

@@ -99,6 +99,7 @@ export function mapBackendExercise(exercise: BackendExercise, fallback?: Partial
     categoria: exercise.categoria?.nombre ?? fallback?.categoria ?? meta.categoria,
     tipo: exercise.tipo?.nombre ?? fallback?.tipo ?? meta.tipo,
     linkVideo: exercise.linkVideo,
+    linkAM: exercise.linkAM,
     maquina: buildMachine(exercise) ?? fallback?.maquina ?? meta.maquina,
     series: fallback?.series ?? meta.series,
     repeticiones: fallback?.repeticiones ?? meta.repeticiones,

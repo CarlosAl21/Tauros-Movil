@@ -84,9 +84,9 @@ export function TaurosSessionProvider({ children }: { children: ReactNode }) {
   const persistAuth = async (nextToken: string, nextUser: TaurosAuthUser) => {
     setToken(nextToken);
     setUser(nextUser);
-    await AsyncStorage.multiSet([
-      [TOKEN_KEY, nextToken],
-      [USER_KEY, JSON.stringify(nextUser)],
+    await Promise.all([
+      AsyncStorage.setItem(TOKEN_KEY, nextToken),
+      AsyncStorage.setItem(USER_KEY, JSON.stringify(nextUser)),
     ]);
   };
 
@@ -111,7 +111,10 @@ export function TaurosSessionProvider({ children }: { children: ReactNode }) {
   const logout = async () => {
     setToken(null);
     setUser(null);
-    await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY]);
+    await Promise.all([
+      AsyncStorage.removeItem(TOKEN_KEY),
+      AsyncStorage.removeItem(USER_KEY),
+    ]);
   };
 
   const setPersistentWeight = async (value: number) => {

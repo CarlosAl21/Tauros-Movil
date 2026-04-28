@@ -5,11 +5,7 @@ import { Alert, Pressable, StyleSheet, Text, TextInput, type TextInputProps, Vie
 import { TaurosButton, TaurosCard, TaurosPill } from '@/components/tauros-ui';
 import { TaurosLoginPayload, TaurosRegisterPayload, useTaurosSession } from '@/lib/tauros-session';
 
-const initialLogin: TaurosLoginPayload = {
-  correo: '',
-  password: '',
-};
-
+const initialLogin: TaurosLoginPayload = { correo: '', password: '' };
 const initialRegister: TaurosRegisterPayload = {
   cedula: '',
   nombre: '',
@@ -22,7 +18,7 @@ const initialRegister: TaurosRegisterPayload = {
 
 export function TaurosAuthCard() {
   const { login, register } = useTaurosSession();
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [showRegister, setShowRegister] = useState(false);
   const [loginForm, setLoginForm] = useState(initialLogin);
   const [registerForm, setRegisterForm] = useState(initialRegister);
   const [submitting, setSubmitting] = useState(false);
@@ -30,7 +26,7 @@ export function TaurosAuthCard() {
   const submit = async () => {
     setSubmitting(true);
     try {
-      if (mode === 'login') {
+      if (!showRegister) {
         if (!loginForm.correo || !loginForm.password) {
           throw new Error('Completa correo y contraseña');
         }
@@ -44,7 +40,7 @@ export function TaurosAuthCard() {
 
       await register(registerForm);
     } catch (error) {
-      Alert.alert('Autenticación', error instanceof Error ? error.message : 'No se pudo iniciar sesión');
+      Alert.alert('Autenticación', error instanceof Error ? error.message : 'No se pudo completar el acceso');
     } finally {
       setSubmitting(false);
     }
@@ -53,43 +49,36 @@ export function TaurosAuthCard() {
   return (
     <TaurosCard style={styles.card}>
       <View style={styles.header}>
-        <TaurosPill label="Acceso Tauros" tone="accent" />
-        <Text style={styles.title}>Inicia sesión para sincronizar tus rutinas con el backend</Text>
-        <Text style={styles.subtitle}>Los ejercicios, planes, horarios y eventos se cargan desde la API real del sistema.</Text>
+        <TaurosPill label="Tauros" tone="accent" />
+        <Text style={styles.title}>{showRegister ? 'Crea tu cuenta' : 'Inicia sesión'}</Text>
+        <Text style={styles.subtitle}>{showRegister ? 'Registra tus datos para entrar al sistema.' : 'Accede a tus rutinas y eventos.'}</Text>
       </View>
 
-      <View style={styles.modeRow}>
-        <Pressable onPress={() => setMode('login')} style={[styles.modeButton, mode === 'login' ? styles.modeButtonActive : undefined]}>
-          <Text style={[styles.modeText, mode === 'login' ? styles.modeTextActive : undefined]}>Ingresar</Text>
-        </Pressable>
-        <Pressable onPress={() => setMode('register')} style={[styles.modeButton, mode === 'register' ? styles.modeButtonActive : undefined]}>
-          <Text style={[styles.modeText, mode === 'register' ? styles.modeTextActive : undefined]}>Registrar</Text>
-        </Pressable>
+      <View style={styles.form}>
+        {!showRegister ? (
+          <>
+            <Field label="Correo" value={loginForm.correo} onChangeText={(value) => setLoginForm((current) => ({ ...current, correo: value }))} keyboardType="email-address" />
+            <Field label="Contraseña" value={loginForm.password} onChangeText={(value) => setLoginForm((current) => ({ ...current, password: value }))} secureTextEntry />
+          </>
+        ) : (
+          <>
+            <Field label="Cédula" value={registerForm.cedula} onChangeText={(value) => setRegisterForm((current) => ({ ...current, cedula: value }))} />
+            <Field label="Nombre" value={registerForm.nombre} onChangeText={(value) => setRegisterForm((current) => ({ ...current, nombre: value }))} />
+            <Field label="Apellido" value={registerForm.apellido} onChangeText={(value) => setRegisterForm((current) => ({ ...current, apellido: value }))} />
+            <Field label="Fecha de nacimiento" value={registerForm.fechaNacimiento} onChangeText={(value) => setRegisterForm((current) => ({ ...current, fechaNacimiento: value }))} placeholder="YYYY-MM-DD" />
+            <Field label="Correo" value={registerForm.correo} onChangeText={(value) => setRegisterForm((current) => ({ ...current, correo: value }))} keyboardType="email-address" />
+            <Field label="Contraseña" value={registerForm.password} onChangeText={(value) => setRegisterForm((current) => ({ ...current, password: value }))} secureTextEntry />
+            <Field label="Teléfono" value={registerForm.telefono} onChangeText={(value) => setRegisterForm((current) => ({ ...current, telefono: value }))} keyboardType="phone-pad" />
+          </>
+        )}
       </View>
 
-      {mode === 'login' ? (
-        <View style={styles.form}>
-          <Field label="Correo" value={loginForm.correo} onChangeText={(value) => setLoginForm((current) => ({ ...current, correo: value }))} keyboardType="email-address" />
-          <Field label="Contraseña" value={loginForm.password} onChangeText={(value) => setLoginForm((current) => ({ ...current, password: value }))} secureTextEntry />
-        </View>
-      ) : (
-        <View style={styles.form}>
-          <Field label="Cédula" value={registerForm.cedula} onChangeText={(value) => setRegisterForm((current) => ({ ...current, cedula: value }))} />
-          <Field label="Nombre" value={registerForm.nombre} onChangeText={(value) => setRegisterForm((current) => ({ ...current, nombre: value }))} />
-          <Field label="Apellido" value={registerForm.apellido} onChangeText={(value) => setRegisterForm((current) => ({ ...current, apellido: value }))} />
-          <Field label="Fecha de nacimiento" value={registerForm.fechaNacimiento} onChangeText={(value) => setRegisterForm((current) => ({ ...current, fechaNacimiento: value }))} placeholder="YYYY-MM-DD" />
-          <Field label="Correo" value={registerForm.correo} onChangeText={(value) => setRegisterForm((current) => ({ ...current, correo: value }))} keyboardType="email-address" />
-          <Field label="Contraseña" value={registerForm.password} onChangeText={(value) => setRegisterForm((current) => ({ ...current, password: value }))} secureTextEntry />
-          <Field label="Teléfono" value={registerForm.telefono} onChangeText={(value) => setRegisterForm((current) => ({ ...current, telefono: value }))} keyboardType="phone-pad" />
-        </View>
-      )}
+      <TaurosButton label={submitting ? 'Procesando...' : showRegister ? 'Crear cuenta' : 'Entrar'} onPress={submit} disabled={submitting} />
 
-      <TaurosButton label={submitting ? 'Procesando...' : mode === 'login' ? 'Entrar al sistema' : 'Crear cuenta'} onPress={submit} disabled={submitting} />
-
-      <View style={styles.tipRow}>
-        <MaterialCommunityIcons name="shield-account-outline" size={18} color="#f4ae1a" />
-        <Text style={styles.tipText}>La sesión se guarda en el dispositivo para que no tengas que iniciar cada vez.</Text>
-      </View>
+      <Pressable onPress={() => setShowRegister((current) => !current)} style={styles.linkRow}>
+        <MaterialCommunityIcons name="account-switch-outline" size={16} color="#f4ae1a" />
+        <Text style={styles.linkText}>{showRegister ? 'Ya tengo cuenta' : 'Crear cuenta nueva'}</Text>
+      </Pressable>
     </TaurosCard>
   );
 }
@@ -104,77 +93,14 @@ function Field({ label, ...props }: { label: string } & TextInputProps) {
 }
 
 const styles = StyleSheet.create({
-  card: {
-    gap: 14,
-  },
-  header: {
-    gap: 8,
-  },
-  title: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: '900',
-  },
-  subtitle: {
-    color: '#ababab',
-    lineHeight: 18,
-    fontSize: 13,
-  },
-  modeRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  modeButton: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 14,
-    backgroundColor: '#171717',
-    borderWidth: 1,
-    borderColor: '#2a2a2a',
-    alignItems: 'center',
-  },
-  modeButtonActive: {
-    backgroundColor: 'rgba(244, 174, 26, 0.12)',
-    borderColor: 'rgba(244, 174, 26, 0.3)',
-  },
-  modeText: {
-    color: '#b4b4b4',
-    fontWeight: '800',
-  },
-  modeTextActive: {
-    color: '#f4ae1a',
-  },
-  form: {
-    gap: 10,
-  },
-  field: {
-    gap: 6,
-  },
-  label: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 12,
-  },
-  input: {
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#343434',
-    backgroundColor: '#0f0f0f',
-    color: '#fff',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  tipRow: {
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'flex-start',
-  },
-  tipText: {
-    flex: 1,
-    color: '#a8a8a8',
-    lineHeight: 18,
-    fontSize: 12,
-  },
+  card: { gap: 14 },
+  header: { gap: 6 },
+  title: { color: '#fff', fontSize: 20, fontWeight: '900' },
+  subtitle: { color: '#a9a9a9', lineHeight: 18, fontSize: 13 },
+  form: { gap: 10 },
+  field: { gap: 6 },
+  label: { color: '#fff', fontWeight: '700', fontSize: 12 },
+  input: { borderRadius: 14, borderWidth: 1, borderColor: '#303030', backgroundColor: '#0f0f0f', color: '#fff', paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, fontWeight: '700' },
+  linkRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingTop: 2 },
+  linkText: { color: '#f4ae1a', fontWeight: '800' },
 });

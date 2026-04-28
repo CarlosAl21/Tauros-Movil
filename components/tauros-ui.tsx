@@ -1,5 +1,5 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { Link } from 'expo-router';
+import { Href, Link } from 'expo-router';
 import { ReactNode } from 'react';
 import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 
@@ -162,7 +162,7 @@ export function TaurosInputButton({
   icon,
 }: {
   label: string;
-  href: string;
+  href: Href;
   icon?: ReactNode;
 }) {
   return (
