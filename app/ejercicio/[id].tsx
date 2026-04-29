@@ -4,7 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import type { ComponentType } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import * as Haptics from 'expo-haptics';
-import { Alert, StyleSheet, Text, TextInput, Vibration, View } from 'react-native';
+import { Alert, Platform, StyleSheet, Text, TextInput, Vibration, View } from 'react-native';
 import { VideoView, useVideoPlayer } from 'expo-video';
 
 import { TaurosAuthCard } from '@/components/tauros-auth-card';
@@ -179,7 +179,7 @@ export default function ExerciseDetailScreen() {
   };
 
   const notifyWithSoundAndVibration = async (title: string, body: string) => {
-    Vibration.vibrate(300);
+    Vibration.vibrate([0, 250, 150, 250]);
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     Alert.alert(title, body);
   };
@@ -263,7 +263,9 @@ export default function ExerciseDetailScreen() {
 
       <TaurosSection title="Activación muscular" subtitle="Referencia visual y grupos musculares principales.">
         <TaurosCard style={styles.activationCard}>
-          <Image source={{ uri: activationSource }} style={styles.activationImage} contentFit="contain" />
+          <View style={styles.activationImageWrap}>
+            <Image source={{ uri: activationSource }} style={styles.activationImage} contentFit="contain" />
+          </View>
           <View style={styles.activationList}>
             {displayExercise.activacion.map((muscle) => (
               <View key={muscle} style={styles.activationItem}>
@@ -367,9 +369,24 @@ const styles = StyleSheet.create({
   restRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   restLabel: { color: '#d0d0d0', fontWeight: '700' },
   restValue: { color: '#fff', fontWeight: '900', fontSize: 16 },
-  activationCard: { flexDirection: 'row', gap: 14, alignItems: 'center' },
-  activationImage: { width: 150, height: 150, borderRadius: 18, backgroundColor: '#272727', flexShrink: 0 },
-  activationList: { flex: 1, gap: 10, paddingLeft: 2 },
-  activationItem: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  activationCard: { flexDirection: 'row', gap: 18, alignItems: 'center', padding: 18 },
+  activationImageWrap: {
+    width: 190,
+    height: 190,
+    borderRadius: 22,
+    backgroundColor: '#ffffff',
+    padding: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexShrink: 0,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  activationImage: { width: '100%', height: '100%', borderRadius: 16, backgroundColor: '#ffffff' },
+  activationList: { flex: 1, gap: 12, paddingLeft: 2 },
+  activationItem: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   activationText: { color: '#fff', fontWeight: '700', fontSize: 13 },
 });

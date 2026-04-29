@@ -1,6 +1,8 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 
 import { TaurosCard, TaurosPill, TaurosProgressBar, TaurosScreen, TaurosSection } from '@/components/tauros-ui';
 import { useTaurosBackend } from '@/lib/tauros-backend';
@@ -10,7 +12,13 @@ import { useTaurosSession } from '@/lib/tauros-session';
 export default function PlansScreen() {
   const router = useRouter();
   const { user } = useTaurosSession();
-  const { plans } = useTaurosBackend();
+  const { plans, refresh } = useTaurosBackend();
+
+  useFocusEffect(
+    useCallback(() => {
+      void refresh();
+    }, [refresh]),
+  );
 
   const displayPlans = mapBackendPlans(plans, user?.userId);
   const assignedPlans = displayPlans.filter((plan) => !plan.esPlantilla && plan.activo);

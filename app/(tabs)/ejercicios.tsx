@@ -42,6 +42,10 @@ export default function ExercisesScreen() {
       <View style={styles.topIntro}>
         <Text style={styles.pageTitle}>Ejercicios</Text>
         <Text style={styles.pageSubtitle}>Cada tarjeta muestra el ejercicio como referencia rápida y abre el detalle con video y activación muscular.</Text>
+        <Pressable style={styles.backButton} onPress={() => router.replace('/')}>
+          <MaterialCommunityIcons name="home-outline" size={18} color="#f4ae1a" />
+          <Text style={styles.backButtonText}>Menú principal</Text>
+        </Pressable>
       </View>
 
       <TaurosSection title="Catálogo disponible" subtitle="Las tarjetas se mantienen simples y claras.">
@@ -120,6 +124,20 @@ const styles = StyleSheet.create({
   topIntro: { gap: 8 },
   pageTitle: { color: '#fff', fontSize: 30, fontWeight: '900' },
   pageSubtitle: { color: '#9e9e9e', lineHeight: 20 },
+  backButton: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: '#171717',
+    borderWidth: 1,
+    borderColor: '#323232',
+    marginTop: 4,
+  },
+  backButtonText: { color: '#fff', fontWeight: '800' },
   exerciseCard: { gap: 14 },
   previewWrap: { borderRadius: 18, overflow: 'hidden' },
   thumbnail: { width: '100%', height: 180, borderRadius: 18, backgroundColor: '#272727' },

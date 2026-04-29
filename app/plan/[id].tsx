@@ -22,7 +22,7 @@ export default function PlanDetailScreen() {
   if (!token) {
     return (
       <TaurosScreen>
-        <TaurosHeader title="Plan" onBack={() => router.back()} />
+        <TaurosHeader title="Plan" onBack={() => router.replace('/planes')} />
         <TaurosAuthCard />
       </TaurosScreen>
     );
@@ -37,7 +37,7 @@ export default function PlanDetailScreen() {
   if (!plan) {
     return (
       <TaurosScreen>
-        <TaurosHeader title="Plan no encontrado" onBack={() => router.back()} />
+        <TaurosHeader title="Plan no encontrado" onBack={() => router.replace('/planes')} />
         <TaurosCard>
           <Text style={styles.emptyText}>No se encontró el plan solicitado.</Text>
         </TaurosCard>
@@ -81,7 +81,7 @@ export default function PlanDetailScreen() {
 
   return (
     <TaurosScreen>
-      <TaurosHeader title={plan.nombre} subtitle={selectedDay ? `Día ${selectedDay.numeroDia} · ${selectedDay.nombre}` : plan.objetivo} onBack={() => router.back()} right={<TaurosPill label={plan.completado ? 'Completo' : (plan.esPlantilla ? 'Plantilla' : 'Asignado')} tone={plan.completado ? 'success' : plan.esPlantilla ? 'muted' : 'success'} />} />
+      <TaurosHeader title={plan.nombre} subtitle={selectedDay ? `Día ${selectedDay.numeroDia} · ${selectedDay.nombre}` : plan.objetivo} onBack={() => router.replace('/planes')} right={<TaurosPill label={plan.completado ? 'Completo' : (plan.esPlantilla ? 'Plantilla' : 'Asignado')} tone={plan.completado ? 'success' : plan.esPlantilla ? 'muted' : 'success'} />} />
 
       <TaurosCard style={styles.summaryCard}>
         <View style={styles.summaryTopRow}>
