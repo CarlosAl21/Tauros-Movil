@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Tauros-Movil",
-    "slug": "Tauros-Movil",
+    "slug": "taurosgym",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -9,7 +9,11 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.anonymous.TaurosMovil",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -48,6 +52,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "686e876d-1f78-4ede-a54c-977e8d9309b7"
+      }
+    },
+    "owner": "g4to21"
   }
 }
