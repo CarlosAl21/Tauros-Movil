@@ -1,5 +1,6 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
+import Constants from 'expo-constants';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import type { ComponentType } from 'react';
 import { useEffect, useRef, useState } from 'react';
@@ -37,6 +38,7 @@ export default function ExerciseDetailScreen() {
   const [restSecondsLeft, setRestSecondsLeft] = useState(0);
   const [completing, setCompleting] = useState(false);
   const previousRestSecondsRef = useRef(0);
+  const notificationsReadyRef = useRef(false);
 
   const displayExercises = mapBackendExercises(exercises);
   const displayPlans = mapBackendPlans(plans, user?.userId);
@@ -181,7 +183,50 @@ export default function ExerciseDetailScreen() {
   const notifyWithSoundAndVibration = async (title: string, body: string) => {
     Vibration.vibrate([0, 250, 150, 250]);
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert(title, body);
+
+    const isExpoGo = Constants.appOwnership === 'expo' || Constants.executionEnvironment === 'storeClient';
+    if (isExpoGo) {
+      Alert.alert(title, body);
+      return;
+    }
+
+    try {
+      const Notifications = await import('expo-notifications');
+
+      if (!notificationsReadyRef.current) {
+        const permissions = await Notifications.getPermissionsAsync();
+        if (permissions.status !== 'granted') {
+          const requested = await Notifications.requestPermissionsAsync();
+          if (requested.status !== 'granted') {
+            Alert.alert(title, body);
+            return;
+          }
+        }
+
+        if (Platform.OS === 'android') {
+          await Notifications.setNotificationChannelAsync('tauros-rest-reminder', {
+            name: 'Recordatorio de descanso',
+            importance: Notifications.AndroidImportance.MAX,
+            vibrationPattern: [0, 250, 150, 250],
+            sound: 'default',
+            lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+          });
+        }
+
+        notificationsReadyRef.current = true;
+      }
+
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title,
+          body,
+          sound: 'default',
+        },
+        trigger: null,
+      });
+    } catch (_error) {
+      Alert.alert(title, body);
+    }
   };
 
   return (
