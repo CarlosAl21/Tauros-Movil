@@ -24,6 +24,7 @@ export type TaurosExercise = {
 };
 
 export type TaurosPlanExercise = {
+  rutinaEjercicioId?: string;
   exerciseId: string;
   orden: number;
   series: string;
@@ -38,6 +39,8 @@ export type TaurosPlanDay = {
   numeroDia: number;
   nombre: string;
   descripcion: string;
+  descansoSegundos: number;
+  finalizada: boolean;
   ejercicios: TaurosPlanExercise[];
 };
 
@@ -61,6 +64,7 @@ export type TaurosEvent = {
   asistentes: number;
   cupo: number;
   activo: boolean;
+  inscrito?: boolean;
 };
 
 export type TaurosSchedule = {
@@ -77,6 +81,7 @@ export type TaurosSuggestion = {
   entidadId: string;
   contenido: string;
   actividad: string;
+  solucionada?: boolean;
 };
 
 export const taurosProfile = {

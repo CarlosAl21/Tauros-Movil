@@ -123,7 +123,10 @@ export function mapBackendPlans(plans: BackendPlan[], currentUserId?: string): T
       numeroDia: day.numeroDia,
       nombre: day.nombre,
       descripcion: day.descripcion,
+      descansoSegundos: Number(day.descansoSegundos ?? 60),
+      finalizada: Boolean(day.finalizada),
       ejercicios: (day.rutinasEjercicio || []).map((rutinaEjercicio) => ({
+        rutinaEjercicioId: rutinaEjercicio.rutinaEjercicioId,
         exerciseId: rutinaEjercicio.ejercicio?.ejercicioId ?? rutinaEjercicio.rutinaEjercicioId,
         orden: rutinaEjercicio.orden,
         series: rutinaEjercicio.series,
@@ -147,7 +150,7 @@ export function mapBackendPlans(plans: BackendPlan[], currentUserId?: string): T
   });
 }
 
-export function mapBackendEvents(events: BackendEvent[]): TaurosEvent[] {
+export function mapBackendEvents(events: BackendEvent[], currentUserId?: string): TaurosEvent[] {
   return events.map((event, index) => ({
     id: event.eventoId,
     nombre: event.nombre,
@@ -157,6 +160,7 @@ export function mapBackendEvents(events: BackendEvent[]): TaurosEvent[] {
     asistentes: Number(event.numParticipantes || 0),
     cupo: Math.max(Number(event.numParticipantes || 0) + 10, 20 + index * 2),
     activo: event.activo,
+    inscrito: Boolean(currentUserId && (event.participantes || []).some((participant) => participant.userId === currentUserId)),
   }));
 }
 
@@ -174,11 +178,12 @@ export function mapBackendSchedules(schedules: BackendSchedule[]): TaurosSchedul
 
 export function mapBackendSuggestions(suggestions: BackendSuggestion[]) {
   return suggestions.map((suggestion, index) => ({
-    id: `${suggestion.tipo}-${index}`,
+    id: suggestion.sugerenciaId || `${suggestion.tipo}-${index}`,
     tipoEntidad: suggestion.tipo,
     entidadId: suggestion.actividad,
     contenido: suggestion.contenido,
     actividad: suggestion.actividad,
+    solucionada: Boolean(suggestion.solucionada),
   })) as TaurosSuggestion[];
 }
 

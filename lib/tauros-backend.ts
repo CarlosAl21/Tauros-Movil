@@ -27,6 +27,8 @@ export type BackendPlan = {
     numeroDia: number;
     nombre: string;
     descripcion: string;
+    descansoSegundos?: number;
+    finalizada?: boolean;
     rutinasEjercicio?: Array<{
       rutinaEjercicioId: string;
       orden: number;
@@ -48,6 +50,7 @@ export type BackendEvent = {
   descripcion: string;
   numParticipantes: number;
   activo: boolean;
+  participantes?: Array<{ userId: string }>;
 };
 
 export type BackendSchedule = {
@@ -58,14 +61,25 @@ export type BackendSchedule = {
 };
 
 export type BackendSuggestion = {
+  sugerenciaId?: string;
   tipo: 'EVENTO' | 'RUTINA' | 'EJERCICIO';
   actividad: string;
+  contenido: string;
+  solucionada?: boolean;
+};
+
+export type BackendSuggestionPayload = {
+  tipoEntidad: 'EVENTO' | 'RUTINA' | 'EJERCICIO';
+  entidadId: string;
   contenido: string;
 };
 
 export type BackendProfile = {
   userId: string;
-  username: string;
+  username?: string;
+  correo?: string;
+  nombre?: string;
+  apellido?: string;
   rol: 'admin' | 'coach' | 'user';
 };
 
@@ -80,6 +94,8 @@ type BackendState = {
   error: string;
   refresh: () => Promise<void>;
   registerForEvent: (eventId: string) => Promise<void>;
+  createSuggestion: (payload: BackendSuggestionPayload) => Promise<void>;
+  toggleRoutineExerciseCompletion: (rutinaEjercicioId: string) => Promise<void>;
   loginUser: TaurosAuthUser | null;
 };
 
@@ -154,6 +170,33 @@ export function useTaurosBackend(): BackendState {
     await refresh();
   }, [refresh, token, user]);
 
+  const createSuggestion = useCallback(async (payload: BackendSuggestionPayload) => {
+    if (!token) {
+      throw new Error('Debes iniciar sesion antes de crear una sugerencia');
+    }
+
+    await taurosRequest('/sugerencia', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      token,
+    });
+
+    await refresh();
+  }, [refresh, token]);
+
+  const toggleRoutineExerciseCompletion = useCallback(async (rutinaEjercicioId: string) => {
+    if (!token) {
+      throw new Error('Debes iniciar sesion para actualizar el estado del ejercicio');
+    }
+
+    await taurosRequest(`/rutina-ejercicio/${rutinaEjercicioId}/completada`, {
+      method: 'PATCH',
+      token,
+    });
+
+    await refresh();
+  }, [refresh, token]);
+
   return useMemo(() => ({
     exercises,
     plans,
@@ -165,6 +208,8 @@ export function useTaurosBackend(): BackendState {
     error,
     refresh,
     registerForEvent,
+    createSuggestion,
+    toggleRoutineExerciseCompletion,
     loginUser: user,
-  }), [error, exercises, loading, plans, events, schedules, suggestions, profile, refresh, registerForEvent, user]);
+  }), [createSuggestion, error, exercises, loading, plans, events, schedules, suggestions, profile, refresh, registerForEvent, toggleRoutineExerciseCompletion, user]);
 }

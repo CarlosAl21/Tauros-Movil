@@ -36,6 +36,9 @@ type TaurosSessionContextValue = {
   logout: () => Promise<void>;
   setPersistentWeight: (value: number) => Promise<void>;
   persistentWeight: number;
+  updateUser: (nextUser: Partial<TaurosAuthUser>) => Promise<void>;
+  updateProfile: (payload: Partial<Pick<TaurosAuthUser, 'nombre' | 'apellido' | 'correo'>>) => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
 };
 
 const TOKEN_KEY = 'tauros_mobile_token';
@@ -90,6 +93,42 @@ export function TaurosSessionProvider({ children }: { children: ReactNode }) {
     ]);
   };
 
+  const updateUser = async (nextUser: Partial<TaurosAuthUser>) => {
+    setUser((current) => {
+      const merged = { ...(current ?? {}), ...nextUser } as TaurosAuthUser;
+      AsyncStorage.setItem(USER_KEY, JSON.stringify(merged)).catch(() => {});
+      return merged;
+    });
+  };
+
+  const updateProfile = async (payload: Partial<Pick<TaurosAuthUser, 'nombre' | 'apellido' | 'correo'>>) => {
+    if (!token) {
+      throw new Error('Debes iniciar sesion');
+    }
+
+    const updated = await taurosRequest<TaurosAuthUser>('/auth/profile', {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify(payload),
+    });
+
+    await updateUser(updated);
+  };
+
+  const changePassword = async (currentPassword: string, newPassword: string) => {
+    if (!token) {
+      throw new Error('Debes iniciar sesion');
+    }
+
+    await taurosRequest('/auth/change-password', {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+
+    await logout();
+  };
+
   const login = async (payload: TaurosLoginPayload) => {
     const response = await taurosRequest<{ access_token: string; user: TaurosAuthUser }>('/auth/login', {
       method: 'POST',
@@ -132,6 +171,9 @@ export function TaurosSessionProvider({ children }: { children: ReactNode }) {
     logout,
     setPersistentWeight,
     persistentWeight,
+    updateUser,
+    updateProfile,
+    changePassword,
   }), [loadingSession, persistentWeight, token, user]);
 
   return <TaurosSessionContext.Provider value={value}>{children}</TaurosSessionContext.Provider>;

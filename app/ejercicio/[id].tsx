@@ -1,36 +1,68 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Video, ResizeMode } from 'expo-av';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
 import type { ComponentType } from 'react';
+import { useEffect, useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { VideoView, useVideoPlayer } from 'expo-video';
 
 import { TaurosAuthCard } from '@/components/tauros-auth-card';
-import { TaurosButton, TaurosCard, TaurosHeader, TaurosInfoRow, TaurosPill, TaurosScreen, TaurosSection } from '@/components/tauros-ui';
+import { TaurosButton, TaurosCard, TaurosHeader, TaurosPill, TaurosScreen, TaurosSection } from '@/components/tauros-ui';
+import { TaurosSuggestionForm } from '../../components/tauros-suggestion-form';
 import { useTaurosBackend } from '@/lib/tauros-backend';
-import { findDisplayExerciseById, findPlanExercise, mapBackendExercises, mapBackendPlans, mapBackendSuggestions } from '@/lib/tauros-mappers';
+import { findDisplayExerciseById, findPlanExercise, mapBackendExercises, mapBackendPlans } from '@/lib/tauros-mappers';
 import { useTaurosSession } from '@/lib/tauros-session';
 
-const VideoComponent = Video as unknown as ComponentType<{
-  source: { uri: string };
+const VideoViewComponent = VideoView as unknown as ComponentType<{
+  player: ReturnType<typeof useVideoPlayer>;
   style: object;
-  shouldPlay?: boolean;
-  isLooping?: boolean;
-  isMuted?: boolean;
-  resizeMode?: ResizeMode;
-  useNativeControls?: boolean;
+  nativeControls?: boolean;
+  contentFit?: 'cover' | 'contain' | 'fill' | 'none' | 'scale-down';
 }>;
 
 export default function ExerciseDetailScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ id?: string }>();
+  const params = useLocalSearchParams<{ id?: string; day?: string; planId?: string; routineId?: string }>();
   const exerciseId = Array.isArray(params.id) ? params.id[0] : params.id;
+  const dayId = Array.isArray(params.day) ? params.day[0] : params.day;
+  const planId = Array.isArray(params.planId) ? params.planId[0] : params.planId;
+  const routineId = Array.isArray(params.routineId) ? params.routineId[0] : params.routineId;
   const { token, user } = useTaurosSession();
-  const { exercises, plans, suggestions } = useTaurosBackend();
+  const { exercises, plans, toggleRoutineExerciseCompletion } = useTaurosBackend();
   const [carga, setCarga] = useState('');
   const [nota, setNota] = useState('');
   const [completed, setCompleted] = useState(false);
+  const [completedIntervals, setCompletedIntervals] = useState(0);
+  const [restSecondsLeft, setRestSecondsLeft] = useState(0);
+  const [completing, setCompleting] = useState(false);
+
+  const displayExercises = mapBackendExercises(exercises);
+  const displayPlans = mapBackendPlans(plans, user?.userId);
+  const displayExercise = findDisplayExerciseById(exercises, exerciseId) || displayExercises.find((item) => item.id === exerciseId) || null;
+  const assignedPlans = displayPlans.filter((plan) => !plan.esPlantilla && plan.activo);
+  const activePlan = (planId ? displayPlans.find((plan) => plan.id === planId) : null) || assignedPlans[assignedPlans.length - 1] || displayPlans[0];
+  const routineExercise = findPlanExercise(activePlan, exerciseId);
+  const targetDay = (dayId && activePlan) ? activePlan.dias.find((day) => day.id === dayId) : (routineExercise?.day || null);
+  const activeRoutineId = routineId || routineExercise?.exercise.rutinaEjercicioId;
+  const seriesSource = routineExercise?.exercise.series || '3';
+  const intervalsTarget = parseIntervalsFromSeries(seriesSource);
+  const restDuration = targetDay?.descansoSegundos ?? parseRestToSeconds(displayExercise?.descanso || '01:00');
+
+  useEffect(() => {
+    setCompleted(Boolean(routineExercise?.exercise.completado));
+  }, [routineExercise?.exercise.completado]);
+
+  useEffect(() => {
+    if (restSecondsLeft <= 0) {
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setRestSecondsLeft((current) => (current > 0 ? current - 1 : 0));
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [restSecondsLeft]);
 
   if (!token) {
     return (
@@ -40,13 +72,6 @@ export default function ExerciseDetailScreen() {
       </TaurosScreen>
     );
   }
-
-  const displayExercises = mapBackendExercises(exercises);
-  const displayPlans = mapBackendPlans(plans, user?.userId);
-  const activePlan = displayPlans.find((plan) => !plan.esPlantilla) || displayPlans[0];
-  const displayExercise = findDisplayExerciseById(exercises, exerciseId) || displayExercises.find((item) => item.id === exerciseId) || null;
-  const routineExercise = findPlanExercise(activePlan, exerciseId);
-  const exerciseSuggestions = mapBackendSuggestions(suggestions).filter((item) => item.tipoEntidad === 'EJERCICIO' && item.actividad === displayExercise?.nombre);
 
   if (!displayExercise) {
     return (
@@ -64,6 +89,56 @@ export default function ExerciseDetailScreen() {
   const notesText = nota || routineExercise?.exercise.notas || displayExercise.notas || '';
   const activationSource = displayExercise.linkAM || displayExercise.thumbnail;
 
+  const onCompleteInterval = () => {
+    if (completedIntervals >= intervalsTarget) {
+      return;
+    }
+
+    setCompletedIntervals((current) => current + 1);
+    setRestSecondsLeft(restDuration);
+  };
+
+  const onCompleteExercise = async () => {
+    if (!activeRoutineId) {
+      setCompleted((current) => !current);
+      return;
+    }
+
+    try {
+      setCompleting(true);
+      const wasCompleted = completed;
+      await toggleRoutineExerciseCompletion(activeRoutineId);
+      const nowCompleted = !wasCompleted;
+      setCompleted(nowCompleted);
+
+      if (!nowCompleted || !targetDay) {
+        return;
+      }
+
+      const currentIndex = targetDay.ejercicios.findIndex((item) => item.rutinaEjercicioId === activeRoutineId);
+      const nextExercise = currentIndex >= 0 ? targetDay.ejercicios[currentIndex + 1] : undefined;
+
+      if (nextExercise) {
+        router.push({
+          pathname: '/ejercicio/[id]',
+          params: {
+            id: nextExercise.exerciseId,
+            planId: activePlan?.id || '',
+            day: targetDay.id,
+            routineId: nextExercise.rutinaEjercicioId || '',
+          },
+        });
+        return;
+      }
+
+      if (activePlan?.id) {
+        router.push({ pathname: '/plan/[id]', params: { id: activePlan.id } });
+      }
+    } finally {
+      setCompleting(false);
+    }
+  };
+
   return (
     <TaurosScreen>
       <TaurosHeader
@@ -76,14 +151,7 @@ export default function ExerciseDetailScreen() {
       <TaurosCard style={styles.heroCard}>
         <View style={styles.heroVisualRow}>
           <View style={styles.heroVideoWrap}>
-            <VideoComponent
-              source={{ uri: displayExercise.linkVideo }}
-              style={styles.video}
-              shouldPlay
-              isLooping
-              isMuted
-              resizeMode={ResizeMode.COVER}
-            />
+            <ExerciseVideo source={displayExercise.linkVideo} />
           </View>
           <View style={styles.heroInfo}>
             <Text style={styles.exerciseTitle}>{displayExercise.nombre}</Text>
@@ -107,11 +175,36 @@ export default function ExerciseDetailScreen() {
           <Text style={styles.inputLabel}>Notas</Text>
           <TextInput value={nota} onChangeText={setNota} multiline style={[styles.input, styles.textArea]} placeholder={notesText || 'Escribe una nota corta'} placeholderTextColor="#666" />
 
-          <TaurosButton label={completed ? 'Completado' : 'Marcar como completado'} onPress={() => setCompleted((current) => !current)} />
+          <View style={styles.intervalsCard}>
+            <View style={styles.intervalHeader}>
+              <Text style={styles.intervalTitle}>Intervalos de repeticiones</Text>
+              <Text style={styles.intervalCounter}>{completedIntervals}/{intervalsTarget}</Text>
+            </View>
+
+            <View style={styles.intervalDots}>
+              {Array.from({ length: intervalsTarget }).map((_, index) => (
+                <View key={`interval-${index}`} style={[styles.intervalDot, index < completedIntervals ? styles.intervalDotDone : undefined]} />
+              ))}
+            </View>
+
+            <View style={styles.restRow}>
+              <Text style={styles.restLabel}>Descanso</Text>
+              <Text style={styles.restValue}>{formatSeconds(restSecondsLeft)}</Text>
+            </View>
+
+            <TaurosButton
+              compact
+              label={completedIntervals >= intervalsTarget ? 'Intervalos completados' : 'Siguiente repetición'}
+              onPress={onCompleteInterval}
+              disabled={completedIntervals >= intervalsTarget}
+            />
+          </View>
+
+          <TaurosButton label={completed ? 'Completado' : 'Marcar como completado'} onPress={onCompleteExercise} disabled={completing} />
         </TaurosCard>
       </TaurosSection>
 
-      <TaurosSection title="Activación muscular" subtitle="La imagen viene del backend en `linkAM` y ya no depende del recurso local.">
+      <TaurosSection title="Activación muscular" subtitle="Referencia visual y grupos musculares principales.">
         <TaurosCard style={styles.activationCard}>
           <Image source={{ uri: activationSource }} style={styles.activationImage} contentFit="cover" />
           <View style={styles.activationList}>
@@ -125,16 +218,10 @@ export default function ExerciseDetailScreen() {
         </TaurosCard>
       </TaurosSection>
 
-      <TaurosSection title="Sugerencias" subtitle="Directo desde el backend.">
-        <TaurosCard style={styles.suggestionCard}>
-          {exerciseSuggestions.length ? exerciseSuggestions.map((suggestion) => (
-            <View key={suggestion.id} style={styles.suggestionRow}>
-              <MaterialCommunityIcons name="lightbulb-on-outline" size={18} color="#f4ae1a" />
-              <Text style={styles.suggestionText}>{suggestion.contenido}</Text>
-            </View>
-          )) : <Text style={styles.suggestionText}>No hay sugerencias específicas para este ejercicio.</Text>}
-        </TaurosCard>
+      <TaurosSection title="Enviar sugerencia" subtitle="Solo el formulario, sin historial visible.">
+        <TaurosSuggestionForm type="EJERCICIO" entityId={displayExercise.id} title="Comentar ejercicio" subtitle="Escribe una mejora o una observación sobre este ejercicio." />
       </TaurosSection>
+
     </TaurosScreen>
   );
 }
@@ -146,6 +233,50 @@ function InfoPill({ label, value }: { label: string; value: string }) {
       <Text style={styles.infoPillValue}>{value}</Text>
     </View>
   );
+}
+
+function ExerciseVideo({ source }: { source: string }) {
+  const player = useVideoPlayer(source, (videoPlayer) => {
+    videoPlayer.loop = true;
+    videoPlayer.muted = true;
+    videoPlayer.play();
+  });
+
+  return <VideoViewComponent player={player} style={styles.video} nativeControls={false} contentFit="cover" />;
+}
+
+function parseIntervalsFromSeries(series?: string | number | null) {
+  if (series === undefined || series === null) {
+    return 3;
+  }
+
+  const seriesStr = typeof series === 'number' ? String(series) : series;
+
+  const numbers = seriesStr?.match(/\d+/g)?.map(Number).filter((value) => Number.isFinite(value)) ?? [];
+
+  if (!numbers.length) {
+    return 3;
+  }
+
+  return Math.max(1, numbers[0]);
+}
+
+function parseRestToSeconds(rest: string) {
+  const [minsRaw, secsRaw] = rest.split(':');
+  const mins = Number(minsRaw || 0);
+  const secs = Number(secsRaw || 0);
+
+  if (!Number.isFinite(mins) || !Number.isFinite(secs)) {
+    return 60;
+  }
+
+  return Math.max(1, mins * 60 + secs);
+}
+
+function formatSeconds(totalSeconds: number) {
+  const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+  const seconds = Math.floor(totalSeconds % 60).toString().padStart(2, '0');
+  return `${minutes}:${seconds}`;
 }
 
 const styles = StyleSheet.create({
@@ -168,12 +299,19 @@ const styles = StyleSheet.create({
   inputLabel: { color: '#fff', fontWeight: '800', fontSize: 13 },
   input: { borderRadius: 14, borderWidth: 1, borderColor: '#353535', backgroundColor: '#0f0f0f', color: '#fff', paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, fontWeight: '700' },
   textArea: { minHeight: 100, textAlignVertical: 'top' },
+  intervalsCard: { gap: 10, padding: 12, borderRadius: 16, backgroundColor: '#171717', borderWidth: 1, borderColor: '#2b2b2b' },
+  intervalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  intervalTitle: { color: '#fff', fontWeight: '800', fontSize: 13 },
+  intervalCounter: { color: '#f4ae1a', fontWeight: '900' },
+  intervalDots: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  intervalDot: { width: 12, height: 12, borderRadius: 999, backgroundColor: '#3a3a3a' },
+  intervalDotDone: { backgroundColor: '#f4ae1a' },
+  restRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  restLabel: { color: '#d0d0d0', fontWeight: '700' },
+  restValue: { color: '#fff', fontWeight: '900', fontSize: 16 },
   activationCard: { flexDirection: 'row', gap: 14, alignItems: 'center' },
   activationImage: { width: 150, height: 150, borderRadius: 18, backgroundColor: '#272727' },
   activationList: { flex: 1, gap: 10 },
   activationItem: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   activationText: { color: '#fff', fontWeight: '700', fontSize: 13 },
-  suggestionCard: { gap: 12 },
-  suggestionRow: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
-  suggestionText: { flex: 1, color: '#b3b3b3', lineHeight: 18, fontSize: 12 },
 });

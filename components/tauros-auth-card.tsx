@@ -50,8 +50,8 @@ export function TaurosAuthCard() {
     <TaurosCard style={styles.card}>
       <View style={styles.header}>
         <TaurosPill label="Tauros" tone="accent" />
-        <Text style={styles.title}>{showRegister ? 'Crea tu cuenta' : 'Inicia sesión'}</Text>
-        <Text style={styles.subtitle}>{showRegister ? 'Registra tus datos para entrar al sistema.' : 'Accede a tus rutinas y eventos.'}</Text>
+        <Text style={styles.title}>{showRegister ? 'Registro' : 'Ingreso'}</Text>
+        <Text style={styles.subtitle}>{showRegister ? 'Completa tus datos para entrar al sistema.' : 'Accede con tu correo y contraseña.'}</Text>
       </View>
 
       <View style={styles.form}>
