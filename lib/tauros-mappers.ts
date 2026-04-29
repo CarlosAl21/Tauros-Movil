@@ -117,7 +117,11 @@ export function mapBackendExercises(exercises: BackendExercise[]) {
 }
 
 export function mapBackendPlans(plans: BackendPlan[], currentUserId?: string): TaurosPlan[] {
-  return plans.map((plan) => {
+  return [...plans].sort((left, right) => {
+    const leftTime = new Date(left.createdAt || 0).getTime();
+    const rightTime = new Date(right.createdAt || 0).getTime();
+    return rightTime - leftTime;
+  }).map((plan) => {
     const dias = (plan.rutinasDia || []).map((day) => ({
       id: day.rutinaDiaId,
       numeroDia: day.numeroDia,
@@ -136,6 +140,7 @@ export function mapBackendPlans(plans: BackendPlan[], currentUserId?: string): T
         completado: Boolean(rutinaEjercicio.completada),
       })),
     }));
+    const completado = dias.length > 0 && dias.every((day) => day.finalizada);
 
     return {
       id: plan.planEntrenamientoId,
@@ -145,8 +150,31 @@ export function mapBackendPlans(plans: BackendPlan[], currentUserId?: string): T
       duracionDias: Number(plan.duracionDias || dias.length || 0),
       esPlantilla: plan.esPlantilla !== false,
       activo: plan.esPlantilla === false && Boolean(currentUserId) ? plan.usuario?.userId === currentUserId : plan.esPlantilla === false,
+      createdAt: plan.createdAt,
+      completado,
       dias,
     };
+  });
+}
+
+export function pickLatestAssignedPlan(plans: TaurosPlan[]) {
+  if (!plans.length) {
+    return null;
+  }
+
+  return plans.reduce<TaurosPlan>((latest, current) => {
+    const latestTime = new Date(latest.createdAt || 0).getTime();
+    const currentTime = new Date(current.createdAt || 0).getTime();
+
+    if (currentTime > latestTime) {
+      return current;
+    }
+
+    if (currentTime < latestTime) {
+      return latest;
+    }
+
+    return latest;
   });
 }
 

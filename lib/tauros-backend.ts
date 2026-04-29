@@ -20,6 +20,7 @@ export type BackendPlan = {
   descripcion: string;
   duracionDias: number;
   objetivo: string;
+  createdAt?: string;
   esPlantilla?: boolean;
   usuario?: { userId?: string } | null;
   rutinasDia?: Array<{

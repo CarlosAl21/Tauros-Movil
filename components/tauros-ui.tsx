@@ -1,7 +1,7 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Href, Link } from 'expo-router';
 import { ReactNode } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const surface = '#111111';
@@ -43,12 +43,19 @@ export function TaurosScreen({ children, scrollable = true }: ScreenProps) {
     <SafeAreaView style={styles.safeArea}>
       <View pointerEvents="none" style={styles.glowTop} />
       <View pointerEvents="none" style={styles.glowBottom} />
-      <Wrapper
-        style={styles.wrapper}
-        contentContainerStyle={scrollable ? styles.scrollContent : styles.wrapperContent}
-        showsVerticalScrollIndicator={false}>
-        {children}
-      </Wrapper>
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoiding}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={0}>
+        <Wrapper
+          style={styles.wrapper}
+          contentContainerStyle={scrollable ? styles.scrollContent : styles.wrapperContent}
+          keyboardShouldPersistTaps={scrollable ? 'handled' : undefined}
+          automaticallyAdjustKeyboardInsets={scrollable && Platform.OS === 'ios'}
+          showsVerticalScrollIndicator={false}>
+          {children}
+        </Wrapper>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -223,6 +230,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#050505',
   },
   wrapper: {
+    flex: 1,
+  },
+  keyboardAvoiding: {
     flex: 1,
   },
   wrapperContent: {

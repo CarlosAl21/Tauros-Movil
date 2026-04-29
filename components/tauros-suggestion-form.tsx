@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useState } from 'react';
-import { Alert, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableWithoutFeedback, View, ScrollView } from 'react-native';
+import { Alert, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { TaurosButton, TaurosCard } from '@/components/tauros-ui';
 import { type BackendSuggestionPayload, useTaurosBackend } from '@/lib/tauros-backend';
@@ -43,32 +43,28 @@ export function TaurosSuggestionForm({
   };
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ width: '100%' }} keyboardVerticalOffset={90}>
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 12 }}>
-          <TaurosCard style={styles.card}>
-            <View style={styles.header}>
-              <MaterialCommunityIcons name="message-text-outline" size={20} color="#f4ae1a" />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.title}>{title}</Text>
-                <Text style={styles.subtitle}>{subtitle}</Text>
-              </View>
-            </View>
+    <TaurosCard style={styles.card}>
+      <View style={styles.header}>
+        <MaterialCommunityIcons name="message-text-outline" size={20} color="#f4ae1a" />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.title}>{title}</Text>
+          <Text style={styles.subtitle}>{subtitle}</Text>
+        </View>
+      </View>
 
-            <TextInput
-              value={content}
-              onChangeText={setContent}
-              multiline
-              placeholder="Escribe tu sugerencia"
-              placeholderTextColor="#666"
-              style={styles.input}
-            />
+      <TextInput
+        value={content}
+        onChangeText={setContent}
+        multiline
+        placeholder="Escribe tu sugerencia"
+        placeholderTextColor="#666"
+        style={styles.input}
+        textAlignVertical="top"
+        returnKeyType="default"
+      />
 
-            <TaurosButton label={submitting ? 'Enviando...' : 'Enviar sugerencia'} onPress={sendSuggestion} disabled={submitting} />
-          </TaurosCard>
-        </ScrollView>
-      </TouchableWithoutFeedback>
-    </KeyboardAvoidingView>
+      <TaurosButton label={submitting ? 'Enviando...' : 'Enviar sugerencia'} onPress={sendSuggestion} disabled={submitting} />
+    </TaurosCard>
   );
 }
 

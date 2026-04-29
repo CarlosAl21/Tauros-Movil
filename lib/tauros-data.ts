@@ -52,6 +52,8 @@ export type TaurosPlan = {
   duracionDias: number;
   esPlantilla: boolean;
   activo: boolean;
+  createdAt?: string;
+  completado: boolean;
   dias: TaurosPlanDay[];
 };
 

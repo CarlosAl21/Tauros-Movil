@@ -97,6 +97,10 @@ function PausedVideoPreview({ source, fallback }: { source: string; fallback: st
     return <Image source={{ uri: fallback }} style={styles.thumbnail} contentFit="cover" />;
   }
 
+  return <VideoPreview source={source} />;
+}
+
+function VideoPreview({ source }: { source: string }) {
   const player = useVideoPlayer(source, (videoPlayer) => {
     videoPlayer.muted = true;
     videoPlayer.pause();

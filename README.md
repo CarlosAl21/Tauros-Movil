@@ -6,14 +6,14 @@ App móvil de Tauros construida con Expo Router.
 
 - Node.js instalado.
 - Expo Go instalado en el celular.
-- Backend de Tauros ejecutándose en tu red local.
+- Backend de Tauros ejecutándose en tu red local o publicado en Render.
 
 ## Variables de entorno
 
-Copia `.env.example` a `.env` y ajusta la IP del backend:
+Copia `.env.example` a `.env` y ajusta la URL del backend:
 
 ```bash
-EXPO_PUBLIC_TAUROS_API_URL=http://192.168.1.50:3000
+EXPO_PUBLIC_TAUROS_API_URL=https://tu-backend.onrender.com
 ```
 
 Si vas a probar Google login, completa también los client IDs de Google en ese mismo archivo.
@@ -36,7 +36,7 @@ npx expo start -c
 
 4. Asegúrate de que el celular y tu PC estén en la misma red Wi-Fi.
 
-5. Si el backend corre en tu PC, usa su IP local en vez de `localhost`.
+5. Si el backend corre en tu PC, usa su IP local en vez de `localhost`; si ya está en Render, usa la URL pública.
 
 ## Scripts útiles
 

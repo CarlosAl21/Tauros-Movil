@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { TaurosCard, TaurosPill, TaurosProgressBar, TaurosScreen, TaurosSection } from '@/components/tauros-ui';
 import { useTaurosBackend } from '@/lib/tauros-backend';
-import { mapBackendPlans } from '@/lib/tauros-mappers';
+import { mapBackendPlans, pickLatestAssignedPlan } from '@/lib/tauros-mappers';
 import { useTaurosSession } from '@/lib/tauros-session';
 
 export default function PlansScreen() {
@@ -14,7 +14,7 @@ export default function PlansScreen() {
 
   const displayPlans = mapBackendPlans(plans, user?.userId);
   const assignedPlans = displayPlans.filter((plan) => !plan.esPlantilla && plan.activo);
-  const latestPlan = assignedPlans[assignedPlans.length - 1] || null;
+  const latestPlan = pickLatestAssignedPlan(assignedPlans);
 
   return (
     <TaurosScreen>
@@ -31,12 +31,15 @@ export default function PlansScreen() {
                 <Text style={styles.planTitle}>{latestPlan.nombre}</Text>
                 <Text style={styles.planSubtitle}>{latestPlan.descripcion}</Text>
               </View>
-              <TaurosPill label={latestPlan.objetivo} tone="blue" />
+              <View style={styles.planStatusBlock}>
+                <MaterialCommunityIcons name={latestPlan.completado ? 'check-decagram' : 'clipboard-text-outline'} size={18} color={latestPlan.completado ? '#45c46f' : '#f4ae1a'} />
+                <Text style={styles.planStatusText}>{latestPlan.completado ? 'Completo' : 'En curso'}</Text>
+              </View>
             </View>
 
             <View style={styles.planMetaRow}>
               <TaurosPill label={`${latestPlan.duracionDias} días`} tone="accent" />
-              <TaurosPill label="Asignada" tone="success" />
+              <TaurosPill label={latestPlan.completado ? 'Plan completo' : 'Asignada'} tone={latestPlan.completado ? 'success' : 'muted'} />
             </View>
 
             <View style={styles.daysList}>
@@ -80,6 +83,8 @@ const styles = StyleSheet.create({
   planHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   planTitle: { color: '#fff', fontSize: 18, fontWeight: '900' },
   planSubtitle: { color: '#a0a0a0', marginTop: 4, lineHeight: 18, fontSize: 13 },
+  planStatusBlock: { alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 14, backgroundColor: 'rgba(244, 174, 26, 0.08)', borderWidth: 1, borderColor: 'rgba(244, 174, 26, 0.18)' },
+  planStatusText: { color: '#fff', fontSize: 11, fontWeight: '800' },
   planMetaRow: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },
   daysList: { gap: 10 },
   dayCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 18, backgroundColor: '#171717', borderWidth: 1, borderColor: '#272727' },

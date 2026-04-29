@@ -7,7 +7,7 @@ import { TaurosAuthCard } from '@/components/tauros-auth-card';
 import { TaurosButton, TaurosCard, TaurosHeader, TaurosPill, TaurosProgressBar, TaurosScreen, TaurosSection } from '@/components/tauros-ui';
 import { TaurosSuggestionForm } from '../../components/tauros-suggestion-form';
 import { useTaurosBackend } from '@/lib/tauros-backend';
-import { mapBackendExercises, mapBackendPlans } from '@/lib/tauros-mappers';
+import { mapBackendExercises, mapBackendPlans, pickLatestAssignedPlan } from '@/lib/tauros-mappers';
 import { useTaurosSession } from '@/lib/tauros-session';
 
 export default function PlanDetailScreen() {
@@ -30,7 +30,8 @@ export default function PlanDetailScreen() {
 
   const displayExercises = mapBackendExercises(exercises);
   const displayPlans = mapBackendPlans(plans, user?.userId);
-  const plan = displayPlans.find((item) => item.id === planId) || displayPlans.find((item) => !item.esPlantilla) || displayPlans[0];
+  const latestAssignedPlan = pickLatestAssignedPlan(displayPlans.filter((item) => !item.esPlantilla && item.activo));
+  const plan = displayPlans.find((item) => item.id === planId) || latestAssignedPlan || displayPlans.find((item) => !item.esPlantilla) || displayPlans[0];
   const selectedDay = plan?.dias.find((item) => item.id === dayId) ?? null;
 
   if (!plan) {
@@ -80,7 +81,7 @@ export default function PlanDetailScreen() {
 
   return (
     <TaurosScreen>
-      <TaurosHeader title={plan.nombre} subtitle={selectedDay ? `Día ${selectedDay.numeroDia} · ${selectedDay.nombre}` : plan.objetivo} onBack={() => router.back()} right={<TaurosPill label={plan.esPlantilla ? 'Plantilla' : 'Asignado'} tone={plan.esPlantilla ? 'muted' : 'success'} />} />
+      <TaurosHeader title={plan.nombre} subtitle={selectedDay ? `Día ${selectedDay.numeroDia} · ${selectedDay.nombre}` : plan.objetivo} onBack={() => router.back()} right={<TaurosPill label={plan.completado ? 'Completo' : (plan.esPlantilla ? 'Plantilla' : 'Asignado')} tone={plan.completado ? 'success' : plan.esPlantilla ? 'muted' : 'success'} />} />
 
       <TaurosCard style={styles.summaryCard}>
         <View style={styles.summaryTopRow}>

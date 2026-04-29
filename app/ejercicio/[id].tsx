@@ -2,8 +2,9 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import type { ComponentType } from 'react';
-import { useEffect, useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import * as Haptics from 'expo-haptics';
+import { Alert, StyleSheet, Text, TextInput, Vibration, View } from 'react-native';
 import { VideoView, useVideoPlayer } from 'expo-video';
 
 import { TaurosAuthCard } from '@/components/tauros-auth-card';
@@ -27,7 +28,7 @@ export default function ExerciseDetailScreen() {
   const dayId = Array.isArray(params.day) ? params.day[0] : params.day;
   const planId = Array.isArray(params.planId) ? params.planId[0] : params.planId;
   const routineId = Array.isArray(params.routineId) ? params.routineId[0] : params.routineId;
-  const { token, user } = useTaurosSession();
+  const { token, user, getExerciseWeight, setExerciseWeight } = useTaurosSession();
   const { exercises, plans, toggleRoutineExerciseCompletion } = useTaurosBackend();
   const [carga, setCarga] = useState('');
   const [nota, setNota] = useState('');
@@ -35,6 +36,7 @@ export default function ExerciseDetailScreen() {
   const [completedIntervals, setCompletedIntervals] = useState(0);
   const [restSecondsLeft, setRestSecondsLeft] = useState(0);
   const [completing, setCompleting] = useState(false);
+  const previousRestSecondsRef = useRef(0);
 
   const displayExercises = mapBackendExercises(exercises);
   const displayPlans = mapBackendPlans(plans, user?.userId);
@@ -46,11 +48,31 @@ export default function ExerciseDetailScreen() {
   const activeRoutineId = routineId || routineExercise?.exercise.rutinaEjercicioId;
   const seriesSource = routineExercise?.exercise.series || '3';
   const intervalsTarget = parseIntervalsFromSeries(seriesSource);
-  const restDuration = targetDay?.descansoSegundos ?? parseRestToSeconds(displayExercise?.descanso || '01:00');
+  const restDuration = targetDay ? Number(targetDay.descansoSegundos ?? 60) : parseRestToSeconds(displayExercise?.descanso || '01:00');
 
   useEffect(() => {
     setCompleted(Boolean(routineExercise?.exercise.completado));
   }, [routineExercise?.exercise.completado]);
+
+  useEffect(() => {
+    const loadSavedCharge = async () => {
+      if (!displayExercise?.id) {
+        return;
+      }
+
+      const savedCharge = await getExerciseWeight(displayExercise.id);
+      if (savedCharge > 0) {
+        setCarga(String(savedCharge));
+        return;
+      }
+
+      const fallbackCharge = routineExercise?.exercise.carga || displayExercise.cargaSugerida || '';
+      const parsedCharge = Number(String(fallbackCharge).replace(/[^0-9.,]/g, '').replace(',', '.'));
+      setCarga(Number.isFinite(parsedCharge) && parsedCharge > 0 ? String(parsedCharge) : '');
+    };
+
+    void loadSavedCharge();
+  }, [displayExercise?.id, displayExercise?.cargaSugerida, getExerciseWeight, routineExercise?.exercise.carga]);
 
   useEffect(() => {
     if (restSecondsLeft <= 0) {
@@ -62,6 +84,14 @@ export default function ExerciseDetailScreen() {
     }, 1000);
 
     return () => clearInterval(timer);
+  }, [restSecondsLeft]);
+
+  useEffect(() => {
+    if (previousRestSecondsRef.current > 0 && restSecondsLeft === 0) {
+      void notifyWithSoundAndVibration('Descanso terminado', 'Ya puedes continuar con la siguiente repetición.');
+    }
+
+    previousRestSecondsRef.current = restSecondsLeft;
   }, [restSecondsLeft]);
 
   if (!token) {
@@ -85,7 +115,7 @@ export default function ExerciseDetailScreen() {
   }
 
   const seriesText = routineExercise ? `${routineExercise.exercise.series} series · ${routineExercise.exercise.repeticiones} reps` : displayExercise.series;
-  const chargeText = carga || routineExercise?.exercise.carga || displayExercise.cargaSugerida || '0.0 kg';
+  const chargeText = carga ? `${carga} kg` : routineExercise?.exercise.carga || displayExercise.cargaSugerida || '0.0 kg';
   const notesText = nota || routineExercise?.exercise.notas || displayExercise.notas || '';
   const activationSource = displayExercise.linkAM || displayExercise.thumbnail;
 
@@ -106,10 +136,19 @@ export default function ExerciseDetailScreen() {
 
     try {
       setCompleting(true);
+      const parsedCharge = Number(carga.replace(',', '.'));
+      if (Number.isFinite(parsedCharge) && parsedCharge > 0) {
+        await setExerciseWeight(displayExercise.id, parsedCharge);
+      }
+
       const wasCompleted = completed;
       await toggleRoutineExerciseCompletion(activeRoutineId);
       const nowCompleted = !wasCompleted;
       setCompleted(nowCompleted);
+
+      if (nowCompleted) {
+        void notifyWithSoundAndVibration('Ejercicio completado', 'La carga quedó guardada para tu próximo ingreso.');
+      }
 
       if (!nowCompleted || !targetDay) {
         return;
@@ -137,6 +176,12 @@ export default function ExerciseDetailScreen() {
     } finally {
       setCompleting(false);
     }
+  };
+
+  const notifyWithSoundAndVibration = async (title: string, body: string) => {
+    Vibration.vibrate(300);
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    Alert.alert(title, body);
   };
 
   return (
@@ -169,7 +214,19 @@ export default function ExerciseDetailScreen() {
           <View style={styles.exerciseGrid}>
             <InfoPill label="Series y reps" value={seriesText} />
             <InfoPill label="Carga" value={chargeText} />
-            <InfoPill label="Descanso" value={displayExercise.descanso} />
+            <InfoPill label="Descanso" value={formatSeconds(restDuration)} />
+          </View>
+
+          <View style={styles.fieldRow}>
+            <Text style={styles.inputLabel}>Carga usada en este ejercicio</Text>
+            <TextInput
+              value={carga}
+              onChangeText={setCarga}
+              keyboardType="decimal-pad"
+              style={styles.input}
+              placeholder="Ejemplo: 20"
+              placeholderTextColor="#666"
+            />
           </View>
 
           <Text style={styles.inputLabel}>Notas</Text>
@@ -206,7 +263,7 @@ export default function ExerciseDetailScreen() {
 
       <TaurosSection title="Activación muscular" subtitle="Referencia visual y grupos musculares principales.">
         <TaurosCard style={styles.activationCard}>
-          <Image source={{ uri: activationSource }} style={styles.activationImage} contentFit="cover" />
+          <Image source={{ uri: activationSource }} style={styles.activationImage} contentFit="contain" />
           <View style={styles.activationList}>
             {displayExercise.activacion.map((muscle) => (
               <View key={muscle} style={styles.activationItem}>
@@ -292,6 +349,7 @@ const styles = StyleSheet.create({
   machineBadgeLabel: { color: '#f4ae1a', fontSize: 12, fontWeight: '800' },
   machineBadgeValue: { color: '#fff', fontSize: 13, fontWeight: '700' },
   compactCard: { gap: 14 },
+  fieldRow: { gap: 8 },
   exerciseGrid: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },
   infoPill: { flexBasis: '31%', minWidth: 96, padding: 12, borderRadius: 16, backgroundColor: '#171717', borderWidth: 1, borderColor: '#272727', gap: 6 },
   infoPillLabel: { color: '#a0a0a0', fontSize: 12 },
@@ -310,8 +368,8 @@ const styles = StyleSheet.create({
   restLabel: { color: '#d0d0d0', fontWeight: '700' },
   restValue: { color: '#fff', fontWeight: '900', fontSize: 16 },
   activationCard: { flexDirection: 'row', gap: 14, alignItems: 'center' },
-  activationImage: { width: 150, height: 150, borderRadius: 18, backgroundColor: '#272727' },
-  activationList: { flex: 1, gap: 10 },
+  activationImage: { width: 150, height: 150, borderRadius: 18, backgroundColor: '#272727', flexShrink: 0 },
+  activationList: { flex: 1, gap: 10, paddingLeft: 2 },
   activationItem: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   activationText: { color: '#fff', fontWeight: '700', fontSize: 13 },
 });
