@@ -2,9 +2,9 @@ import { StyleSheet, Text, View } from "react-native";
 
 import { TaurosAuthCard } from "@/components/tauros-auth-card";
 import {
-  TaurosCard,
-  TaurosScreen,
-  TaurosSection,
+    TaurosCard,
+    TaurosScreen,
+    TaurosSection,
 } from "@/components/tauros-ui";
 import { useTaurosBackend } from "@/lib/tauros-backend";
 import { mapBackendSchedules } from "@/lib/tauros-mappers";
@@ -37,15 +37,9 @@ export default function SchedulesScreen() {
     <TaurosScreen>
       <View style={styles.topIntro}>
         <Text style={styles.pageTitle}>Horario</Text>
-        <Text style={styles.pageSubtitle}>
-          Solo horarios y apertura real, sin extras que no sirven aquí.
-        </Text>
       </View>
 
-      <TaurosSection
-        title="Apertura semanal"
-        subtitle="Información directa desde el backend."
-      >
+      <TaurosSection title="Apertura semanal">
         <TaurosCard style={styles.scheduleCard}>
           {displaySchedules.length ? (
             displaySchedules.map((schedule) => {

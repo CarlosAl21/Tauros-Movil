@@ -1,17 +1,25 @@
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { Href, Link } from 'expo-router';
-import { ReactNode } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Href, Link } from "expo-router";
+import { ReactNode } from "react";
+import {
+    KeyboardAvoidingView,
+    Platform,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-const surface = '#111111';
-const surfaceAlt = '#191919';
-const border = '#2a2a2a';
-const text = '#f2f2f2';
-const muted = '#9b9b9b';
-const accent = '#f4ae1a';
-const accentSoft = 'rgba(244, 174, 26, 0.14)';
-const blue = '#4da3ff';
+const surface = "#111111";
+const surfaceAlt = "#191919";
+const border = "#2a2a2a";
+const text = "#f2f2f2";
+const muted = "#9b9b9b";
+const accent = "#f4ae1a";
+const accentSoft = "rgba(244, 174, 26, 0.14)";
+const blue = "#4da3ff";
 
 type ScreenProps = {
   children: ReactNode;
@@ -33,7 +41,7 @@ type CardProps = {
 
 type PillProps = {
   label: string;
-  tone?: 'accent' | 'blue' | 'muted' | 'success';
+  tone?: "accent" | "blue" | "muted" | "success";
 };
 
 export function TaurosScreen({ children, scrollable = true }: ScreenProps) {
@@ -45,14 +53,20 @@ export function TaurosScreen({ children, scrollable = true }: ScreenProps) {
       <View pointerEvents="none" style={styles.glowBottom} />
       <KeyboardAvoidingView
         style={styles.keyboardAvoiding}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={0}>
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={0}
+      >
         <Wrapper
           style={styles.wrapper}
-          contentContainerStyle={scrollable ? styles.scrollContent : styles.wrapperContent}
-          keyboardShouldPersistTaps={scrollable ? 'handled' : undefined}
-          automaticallyAdjustKeyboardInsets={scrollable && Platform.OS === 'ios'}
-          showsVerticalScrollIndicator={false}>
+          contentContainerStyle={
+            scrollable ? styles.scrollContent : styles.wrapperContent
+          }
+          keyboardShouldPersistTaps={scrollable ? "handled" : undefined}
+          automaticallyAdjustKeyboardInsets={
+            scrollable && Platform.OS === "ios"
+          }
+          showsVerticalScrollIndicator={false}
+        >
           {children}
         </Wrapper>
       </KeyboardAvoidingView>
@@ -78,20 +92,30 @@ export function TaurosHeader({
       </Pressable>
       <View style={styles.headerTextBlock}>
         <Text style={styles.headerTitle}>{title}</Text>
-        {subtitle ? <Text style={styles.headerSubtitle}>{subtitle}</Text> : null}
+        {subtitle ? (
+          <Text style={styles.headerSubtitle}>{subtitle}</Text>
+        ) : null}
       </View>
       <View>{right}</View>
     </View>
   );
 }
 
-export function TaurosSection({ title, subtitle, actionLabel, onAction, children }: SectionProps) {
+export function TaurosSection({
+  title,
+  subtitle,
+  actionLabel,
+  onAction,
+  children,
+}: SectionProps) {
   return (
     <View style={styles.section}>
       <View style={styles.sectionHeader}>
         <View style={styles.sectionTitleBlock}>
           <Text style={styles.sectionTitle}>{title}</Text>
-          {subtitle ? <Text style={styles.sectionSubtitle}>{subtitle}</Text> : null}
+          {subtitle ? (
+            <Text style={styles.sectionSubtitle}>{subtitle}</Text>
+          ) : null}
         </View>
         {actionLabel ? (
           <Pressable onPress={onAction} style={styles.sectionAction}>
@@ -108,7 +132,7 @@ export function TaurosCard({ children, style }: CardProps) {
   return <View style={[styles.card, style]}>{children}</View>;
 }
 
-export function TaurosPill({ label, tone = 'muted' }: PillProps) {
+export function TaurosPill({ label, tone = "muted" }: PillProps) {
   return (
     <View style={[styles.pill, pillToneStyles[tone]]}>
       <Text style={[styles.pillText, pillTextToneStyles[tone]]}>{label}</Text>
@@ -116,7 +140,15 @@ export function TaurosPill({ label, tone = 'muted' }: PillProps) {
   );
 }
 
-export function TaurosStat({ label, value, icon }: { label: string; value: string | number; icon?: ReactNode }) {
+export function TaurosStat({
+  label,
+  value,
+  icon,
+}: {
+  label: string;
+  value: string | number;
+  icon?: ReactNode;
+}) {
   return (
     <View style={styles.statCard}>
       <View style={styles.statIcon}>{icon}</View>
@@ -129,13 +161,13 @@ export function TaurosStat({ label, value, icon }: { label: string; value: strin
 export function TaurosButton({
   label,
   onPress,
-  variant = 'primary',
+  variant = "primary",
   compact = false,
   disabled = false,
 }: {
   label: string;
   onPress?: () => void;
-  variant?: 'primary' | 'secondary' | 'ghost';
+  variant?: "primary" | "secondary" | "ghost";
   compact?: boolean;
   disabled?: boolean;
 }) {
@@ -145,19 +177,21 @@ export function TaurosButton({
       onPress={onPress}
       style={({ pressed }) => [
         styles.buttonBase,
-        variant === 'primary' ? styles.buttonPrimary : undefined,
-        variant === 'secondary' ? styles.buttonSecondary : undefined,
-        variant === 'ghost' ? styles.buttonGhost : undefined,
+        variant === "primary" ? styles.buttonPrimary : undefined,
+        variant === "secondary" ? styles.buttonSecondary : undefined,
+        variant === "ghost" ? styles.buttonGhost : undefined,
         compact ? styles.buttonCompact : undefined,
         disabled ? styles.buttonDisabled : undefined,
         pressed && !disabled ? styles.buttonPressed : undefined,
-      ]}>
+      ]}
+    >
       <Text
         style={[
           styles.buttonLabel,
-          variant === 'secondary' ? styles.buttonLabelDark : undefined,
-          variant === 'ghost' ? styles.buttonLabelLight : undefined,
-        ]}>
+          variant === "secondary" ? styles.buttonLabelDark : undefined,
+          variant === "ghost" ? styles.buttonLabelLight : undefined,
+        ]}
+      >
         {label}
       </Text>
     </Pressable>
@@ -183,7 +217,13 @@ export function TaurosInputButton({
   );
 }
 
-export function TaurosInfoRow({ label, value }: { label: string; value: string }) {
+export function TaurosInfoRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
   return (
     <View style={styles.infoRow}>
       <Text style={styles.infoLabel}>{label}</Text>
@@ -204,7 +244,11 @@ export function TaurosProgressBar({ value }: { value: number }) {
 export function TaurosEmptyState({ message }: { message: string }) {
   return (
     <View style={styles.emptyState}>
-      <MaterialCommunityIcons name="alert-circle-outline" size={28} color={muted} />
+      <MaterialCommunityIcons
+        name="alert-circle-outline"
+        size={28}
+        color={muted}
+      />
       <Text style={styles.emptyStateText}>{message}</Text>
     </View>
   );
@@ -212,22 +256,22 @@ export function TaurosEmptyState({ message }: { message: string }) {
 
 const pillToneStyles = {
   accent: { backgroundColor: accentSoft },
-  blue: { backgroundColor: 'rgba(77, 163, 255, 0.14)' },
-  muted: { backgroundColor: 'rgba(255, 255, 255, 0.06)' },
-  success: { backgroundColor: 'rgba(69, 196, 111, 0.14)' },
+  blue: { backgroundColor: "rgba(77, 163, 255, 0.14)" },
+  muted: { backgroundColor: "rgba(255, 255, 255, 0.06)" },
+  success: { backgroundColor: "rgba(69, 196, 111, 0.14)" },
 };
 
 const pillTextToneStyles = {
   accent: { color: accent },
   blue: { color: blue },
-  muted: { color: '#cfcfcf' },
-  success: { color: '#45c46f' },
+  muted: { color: "#cfcfcf" },
+  success: { color: "#45c46f" },
 };
 
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#050505',
+    backgroundColor: "#050505",
   },
   wrapper: {
     flex: 1,
@@ -244,34 +288,34 @@ const styles = StyleSheet.create({
     paddingBottom: 28,
   },
   glowTop: {
-    position: 'absolute',
+    position: "absolute",
     top: -120,
     right: -80,
     width: 260,
     height: 260,
     borderRadius: 260,
-    backgroundColor: 'rgba(244, 174, 26, 0.08)',
+    backgroundColor: "rgba(244, 174, 26, 0.08)",
   },
   glowBottom: {
-    position: 'absolute',
+    position: "absolute",
     bottom: -140,
     left: -100,
     width: 300,
     height: 300,
     borderRadius: 300,
-    backgroundColor: 'rgba(77, 163, 255, 0.08)',
+    backgroundColor: "rgba(77, 163, 255, 0.08)",
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 12,
     paddingBottom: 16,
   },
   backButton: {
     width: 40,
     height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     borderRadius: 12,
     backgroundColor: surfaceAlt,
     borderWidth: 1,
@@ -283,7 +327,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     color: text,
     fontSize: 22,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   headerSubtitle: {
     color: muted,
@@ -295,9 +339,9 @@ const styles = StyleSheet.create({
     marginTop: 18,
   },
   sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
     gap: 12,
   },
   sectionTitleBlock: {
@@ -306,7 +350,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     color: text,
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   sectionSubtitle: {
     color: muted,
@@ -318,13 +362,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 999,
-    backgroundColor: 'rgba(244, 174, 26, 0.12)',
+    backgroundColor: "rgba(244, 174, 26, 0.12)",
     borderWidth: 1,
-    borderColor: 'rgba(244, 174, 26, 0.2)',
+    borderColor: "rgba(244, 174, 26, 0.2)",
   },
   sectionActionText: {
     color: accent,
-    fontWeight: '700',
+    fontWeight: "700",
     fontSize: 12,
   },
   card: {
@@ -333,32 +377,32 @@ const styles = StyleSheet.create({
     backgroundColor: surface,
     borderWidth: 1,
     borderColor: border,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOpacity: 0.28,
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 8 },
     elevation: 6,
   },
   pill: {
-    alignSelf: 'flex-start',
+    alignSelf: "flex-start",
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 999,
   },
   pillText: {
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   statCard: {
     flex: 1,
-    minWidth: '46%',
+    minWidth: "46%",
     borderRadius: 20,
     backgroundColor: surface,
     borderWidth: 1,
     borderColor: border,
     padding: 14,
     gap: 6,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOpacity: 0.2,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 6 },
@@ -367,15 +411,15 @@ const styles = StyleSheet.create({
   statIcon: {
     width: 28,
     height: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     borderRadius: 999,
-    backgroundColor: 'rgba(244, 174, 26, 0.12)',
+    backgroundColor: "rgba(244, 174, 26, 0.12)",
   },
   statValue: {
     color: text,
     fontSize: 20,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   statLabel: {
     color: muted,
@@ -384,10 +428,10 @@ const styles = StyleSheet.create({
   buttonBase: {
     minHeight: 50,
     borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: 16,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOpacity: 0.18,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 5 },
@@ -401,7 +445,7 @@ const styles = StyleSheet.create({
     backgroundColor: accent,
   },
   buttonSecondary: {
-    backgroundColor: '#ffffff',
+    backgroundColor: "#ffffff",
   },
   buttonGhost: {
     backgroundColor: surfaceAlt,
@@ -415,13 +459,13 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.99 }],
   },
   buttonLabel: {
-    color: '#111111',
+    color: "#111111",
     fontSize: 14,
-    fontWeight: '800',
-    textAlign: 'center',
+    fontWeight: "800",
+    textAlign: "center",
   },
   buttonLabelDark: {
-    color: '#111111',
+    color: "#111111",
   },
   buttonLabelLight: {
     color: text,
@@ -433,10 +477,13 @@ const styles = StyleSheet.create({
     backgroundColor: surfaceAlt,
     borderWidth: 1,
     borderColor: border,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     gap: 12,
-    shadowColor: '#000',
+    flex: 1,
+    minWidth: "47%",
+    shadowColor: "#000",
     shadowOpacity: 0.16,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
@@ -445,17 +492,17 @@ const styles = StyleSheet.create({
   linkIcon: {
     width: 28,
     height: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   linkLabel: {
     color: text,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   infoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: 12,
   },
   infoLabel: {
@@ -465,29 +512,29 @@ const styles = StyleSheet.create({
   infoValue: {
     color: text,
     fontSize: 14,
-    fontWeight: '700',
-    textAlign: 'right',
+    fontWeight: "700",
+    textAlign: "right",
   },
   progressTrack: {
     height: 10,
     borderRadius: 999,
-    backgroundColor: '#232323',
-    overflow: 'hidden',
+    backgroundColor: "#232323",
+    overflow: "hidden",
   },
   progressFill: {
-    height: '100%',
+    height: "100%",
     borderRadius: 999,
     backgroundColor: accent,
   },
   emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     gap: 8,
     paddingVertical: 20,
   },
   emptyStateText: {
     color: muted,
     fontSize: 13,
-    textAlign: 'center',
+    textAlign: "center",
   },
 });
