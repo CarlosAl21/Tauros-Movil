@@ -46,6 +46,8 @@ export default function ProfileScreen() {
   const [showPersonalEdit, setShowPersonalEdit] = useState(false);
   const [showWeightForm, setShowWeightForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const fullName =
+    [user?.nombre, user?.apellido].filter(Boolean).join(" ") || "-";
 
   useEffect(() => {
     setNombre(user?.nombre ?? "");
@@ -175,10 +177,7 @@ export default function ProfileScreen() {
               />
             </View>
 
-            <Text style={styles.infoText}>Nombre: {user?.nombre || "-"}</Text>
-            <Text style={styles.infoText}>
-              Apellido: {user?.apellido || "-"}
-            </Text>
+            <Text style={styles.infoText}>Nombre: {fullName}</Text>
             <Text style={styles.infoText}>Correo: {user?.correo || "-"}</Text>
             <Text style={styles.infoText}>
               Peso actual:{" "}
