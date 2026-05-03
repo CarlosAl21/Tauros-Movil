@@ -6,30 +6,32 @@ import { VideoView, useVideoPlayer } from "expo-video";
 import type { ComponentType } from "react";
 import { useEffect, useRef, useState } from "react";
 import {
-  Alert,
-  Platform,
-  StyleSheet,
-  Text,
-  TextInput,
-  Vibration,
-  View,
+    Alert,
+    AppState,
+    type AppStateStatus,
+    Platform,
+    StyleSheet,
+    Text,
+    TextInput,
+    Vibration,
+    View,
 } from "react-native";
 
 import { TaurosAuthCard } from "@/components/tauros-auth-card";
 import {
-  TaurosButton,
-  TaurosCard,
-  TaurosHeader,
-  TaurosPill,
-  TaurosScreen,
-  TaurosSection,
+    TaurosButton,
+    TaurosCard,
+    TaurosHeader,
+    TaurosPill,
+    TaurosScreen,
+    TaurosSection,
 } from "@/components/tauros-ui";
 import { useTaurosBackend } from "@/lib/tauros-backend";
 import {
-  findDisplayExerciseById,
-  findPlanExercise,
-  mapBackendExercises,
-  mapBackendPlans,
+    findDisplayExerciseById,
+    findPlanExercise,
+    mapBackendExercises,
+    mapBackendPlans,
 } from "@/lib/tauros-mappers";
 import { useTaurosSession } from "@/lib/tauros-session";
 import { TaurosSuggestionForm } from "../../components/tauros-suggestion-form";
@@ -49,6 +51,7 @@ export default function ExerciseDetailScreen() {
     planId?: string;
     routineId?: string;
   }>();
+
   const exerciseId = Array.isArray(params.id) ? params.id[0] : params.id;
   const dayId = Array.isArray(params.day) ? params.day[0] : params.day;
   const planId = Array.isArray(params.planId)
@@ -57,18 +60,35 @@ export default function ExerciseDetailScreen() {
   const routineId = Array.isArray(params.routineId)
     ? params.routineId[0]
     : params.routineId;
+
   const { token, user, getExerciseWeight, setExerciseWeight } =
     useTaurosSession();
   const { exercises, plans, toggleRoutineExerciseCompletion } =
     useTaurosBackend();
+
   const [carga, setCarga] = useState("");
   const [nota, setNota] = useState("");
   const [completed, setCompleted] = useState(false);
   const [completedIntervals, setCompletedIntervals] = useState(0);
+  const [completedWarmups, setCompletedWarmups] = useState(0);
   const [restSecondsLeft, setRestSecondsLeft] = useState(0);
+  const [warmupRestSecondsLeft, setWarmupRestSecondsLeft] = useState(0);
+  const [restEndsAt, setRestEndsAt] = useState<number | null>(null);
+  const [warmupRestEndsAt, setWarmupRestEndsAt] = useState<number | null>(null);
   const [completing, setCompleting] = useState(false);
   const previousRestSecondsRef = useRef(0);
+  const previousWarmupRestSecondsRef = useRef(0);
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const restWentBackgroundRef = useRef(false);
+  const warmupWentBackgroundRef = useRef(false);
   const notificationsReadyRef = useRef(false);
+  const restNotificationIdRef = useRef<string | null>(null);
+  const warmupRestNotificationIdRef = useRef<string | null>(null);
+  const [screenNotice, setScreenNotice] = useState<{
+    title: string;
+    body: string;
+    tone: "accent" | "success";
+  } | null>(null);
 
   const displayExercises = mapBackendExercises(exercises);
   const displayPlans = mapBackendPlans(plans, user?.userId);
@@ -90,11 +110,38 @@ export default function ExerciseDetailScreen() {
       : routineExercise?.day || null;
   const activeRoutineId =
     routineId || routineExercise?.exercise.rutinaEjercicioId;
+  const routineTimedSeconds = routineExercise?.exercise.tiempoSegundos;
+  const displayTimedSeconds = Number.isFinite(
+    Number(routineTimedSeconds ?? displayExercise?.tiempoSegundos),
+  )
+    ? Number(routineTimedSeconds ?? displayExercise?.tiempoSegundos)
+    : null;
+  const exerciseWarmups =
+    routineExercise?.exercise.calentamientos ||
+    displayExercise?.calentamientos ||
+    [];
+  const sortedWarmups = exerciseWarmups
+    .slice()
+    .sort((left, right) => left.orden - right.orden);
+  const currentWarmup =
+    completedWarmups < sortedWarmups.length
+      ? sortedWarmups[completedWarmups]
+      : null;
   const seriesSource = routineExercise?.exercise.series || "3";
   const intervalsTarget = parseIntervalsFromSeries(seriesSource);
-  const restDuration = targetDay
-    ? Number(targetDay.descansoSegundos ?? 60)
-    : parseRestToSeconds(displayExercise?.descanso || "01:00");
+  const restDuration = Number(
+    routineExercise?.exercise.descansoSegundos ??
+      targetDay?.descansoSegundos ??
+      parseRestToSeconds(displayExercise?.descanso || "01:00"),
+  );
+  const restEndTitle = `Descanso terminado · ${displayExercise?.nombre || ""}`;
+  const warmupRestEndTitle = `Calentamiento terminado · ${
+    displayExercise?.nombre || ""
+  }`;
+  const restEndBody = displayTimedSeconds
+    ? "Ya puedes continuar con el siguiente intervalo."
+    : "Ya puedes continuar con la siguiente repetición.";
+  const warmupRestEndBody = "Continua con el siguiente calentamiento.";
 
   useEffect(() => {
     setCompleted(Boolean(routineExercise?.exercise.completado));
@@ -135,64 +182,145 @@ export default function ExerciseDetailScreen() {
   ]);
 
   useEffect(() => {
-    if (restSecondsLeft <= 0) {
+    if (restEndsAt === null) {
       return;
     }
 
-    const timer = setInterval(() => {
-      setRestSecondsLeft((current) => (current > 0 ? current - 1 : 0));
-    }, 1000);
+    const updateRest = () => {
+      setRestSecondsLeft(
+        Math.max(0, Math.ceil((restEndsAt - Date.now()) / 1000)),
+      );
+    };
+
+    updateRest();
+    const timer = setInterval(updateRest, 1000);
 
     return () => clearInterval(timer);
-  }, [restSecondsLeft]);
+  }, [restEndsAt]);
+
+  useEffect(() => {
+    if (warmupRestEndsAt === null) {
+      return;
+    }
+
+    const updateWarmupRest = () => {
+      setWarmupRestSecondsLeft(
+        Math.max(0, Math.ceil((warmupRestEndsAt - Date.now()) / 1000)),
+      );
+    };
+
+    updateWarmupRest();
+    const timer = setInterval(updateWarmupRest, 1000);
+
+    return () => clearInterval(timer);
+  }, [warmupRestEndsAt]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener(
+      "change",
+      (nextAppState: AppStateStatus) => {
+        const wasInactive = appStateRef.current !== "active";
+        appStateRef.current = nextAppState;
+
+        if (nextAppState !== "active") {
+          if (restEndsAt !== null) {
+            restWentBackgroundRef.current = true;
+          }
+
+          if (warmupRestEndsAt !== null) {
+            warmupWentBackgroundRef.current = true;
+          }
+
+          return;
+        }
+
+        if (wasInactive && restEndsAt !== null) {
+          setRestSecondsLeft(
+            Math.max(0, Math.ceil((restEndsAt - Date.now()) / 1000)),
+          );
+        }
+
+        if (wasInactive && warmupRestEndsAt !== null) {
+          setWarmupRestSecondsLeft(
+            Math.max(0, Math.ceil((warmupRestEndsAt - Date.now()) / 1000)),
+          );
+        }
+      },
+    );
+
+    return () => subscription.remove();
+  }, [restEndsAt, warmupRestEndsAt]);
 
   useEffect(() => {
     if (previousRestSecondsRef.current > 0 && restSecondsLeft === 0) {
-      void notifyWithSoundAndVibration(
-        "Descanso terminado",
-        "Ya puedes continuar con la siguiente repetición.",
-      );
+      void cancelScheduledNotification(restNotificationIdRef);
+      if (!restWentBackgroundRef.current) {
+        showScreenNotice(restEndTitle, restEndBody, "accent");
+      }
+      restWentBackgroundRef.current = false;
     }
 
     previousRestSecondsRef.current = restSecondsLeft;
-  }, [restSecondsLeft]);
+  }, [displayTimedSeconds, restSecondsLeft]);
 
-  if (!token) {
-    return (
-      <TaurosScreen>
-        <TaurosHeader title="Ejercicio" onBack={() => router.back()} />
-        <TaurosAuthCard />
-      </TaurosScreen>
-    );
-  }
+  useEffect(() => {
+    if (
+      previousWarmupRestSecondsRef.current > 0 &&
+      warmupRestSecondsLeft === 0
+    ) {
+      void cancelScheduledNotification(warmupRestNotificationIdRef);
+      if (!warmupWentBackgroundRef.current) {
+        showScreenNotice(warmupRestEndTitle, warmupRestEndBody, "success");
+      }
+      warmupWentBackgroundRef.current = false;
+    }
 
-  if (!displayExercise) {
-    return (
-      <TaurosScreen>
-        <TaurosHeader
-          title="Ejercicio no encontrado"
-          onBack={() => router.back()}
-        />
-        <TaurosCard>
-          <Text style={styles.emptyText}>
-            No se encontró el ejercicio solicitado.
-          </Text>
-        </TaurosCard>
-      </TaurosScreen>
-    );
-  }
+    previousWarmupRestSecondsRef.current = warmupRestSecondsLeft;
+  }, [warmupRestSecondsLeft]);
+
+  useEffect(() => {
+    setCompletedWarmups(0);
+    setWarmupRestSecondsLeft(0);
+    setWarmupRestEndsAt(null);
+    void cancelScheduledNotification(warmupRestNotificationIdRef);
+    warmupWentBackgroundRef.current = false;
+    previousWarmupRestSecondsRef.current = 0;
+    setCompletedIntervals(0);
+    setRestSecondsLeft(0);
+    setRestEndsAt(null);
+    void cancelScheduledNotification(restNotificationIdRef);
+    restWentBackgroundRef.current = false;
+    previousRestSecondsRef.current = 0;
+  }, [activeRoutineId, exerciseId]);
+
+  useEffect(() => {
+    if (!screenNotice) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setScreenNotice(null);
+    }, 4500);
+
+    return () => clearTimeout(timer);
+  }, [screenNotice]);
 
   const seriesText = routineExercise
-    ? `${routineExercise.exercise.series} series · ${routineExercise.exercise.repeticiones} reps`
-    : displayExercise.series;
+    ? formatExerciseVolume(
+        routineExercise.exercise.series,
+        routineExercise.exercise.repeticiones,
+        displayTimedSeconds,
+      )
+    : displayExercise?.series || "1 series";
   const chargeText = carga
     ? `${carga} kg`
     : routineExercise?.exercise.carga ||
-      displayExercise.cargaSugerida ||
+      displayExercise?.cargaSugerida ||
       "0.0 kg";
   const notesText =
-    nota || routineExercise?.exercise.notas || displayExercise.notas || "";
-  const activationSource = displayExercise.linkAM || displayExercise.thumbnail;
+    nota || routineExercise?.exercise.notas || displayExercise?.notas || "";
+  const activationSource =
+    displayExercise?.linkAM || displayExercise?.thumbnail;
 
   const onCompleteInterval = () => {
     if (completedIntervals >= intervalsTarget) {
@@ -200,7 +328,32 @@ export default function ExerciseDetailScreen() {
     }
 
     setCompletedIntervals((current) => current + 1);
+    restWentBackgroundRef.current = false;
+    setRestEndsAt(Date.now() + restDuration * 1000);
     setRestSecondsLeft(restDuration);
+    void scheduleRestNotification(
+      restNotificationIdRef,
+      restEndTitle,
+      restEndBody,
+      restDuration,
+    );
+  };
+
+  const onCompleteWarmup = () => {
+    if (completedWarmups >= sortedWarmups.length) {
+      return;
+    }
+
+    setCompletedWarmups((current) => current + 1);
+    warmupWentBackgroundRef.current = false;
+    setWarmupRestEndsAt(Date.now() + restDuration * 1000);
+    setWarmupRestSecondsLeft(restDuration);
+    void scheduleRestNotification(
+      warmupRestNotificationIdRef,
+      warmupRestEndTitle,
+      warmupRestEndBody,
+      restDuration,
+    );
   };
 
   const onCompleteExercise = async () => {
@@ -213,7 +366,10 @@ export default function ExerciseDetailScreen() {
       setCompleting(true);
       const parsedCharge = Number(carga.replace(",", "."));
       if (Number.isFinite(parsedCharge) && parsedCharge > 0) {
-        await setExerciseWeight(displayExercise.id, parsedCharge);
+        await setExerciseWeight(
+          displayExercise?.id || activeRoutineId,
+          parsedCharge,
+        );
       }
 
       const wasCompleted = completed;
@@ -257,6 +413,101 @@ export default function ExerciseDetailScreen() {
     } finally {
       setCompleting(false);
     }
+  };
+
+  const scheduleRestNotification = async (
+    notificationIdRef: { current: string | null },
+    title: string,
+    body: string,
+    durationSeconds: number,
+  ) => {
+    const isExpoGo =
+      Constants.appOwnership === "expo" ||
+      Constants.executionEnvironment === "storeClient";
+    if (isExpoGo || durationSeconds <= 0) {
+      return;
+    }
+
+    try {
+      const Notifications = await import("expo-notifications");
+
+      if (!notificationsReadyRef.current) {
+        const permissions = await Notifications.getPermissionsAsync();
+        if (permissions.status !== "granted") {
+          const requested = await Notifications.requestPermissionsAsync();
+          if (requested.status !== "granted") {
+            return;
+          }
+        }
+
+        if (Platform.OS === "android") {
+          await Notifications.setNotificationChannelAsync(
+            "tauros-rest-reminder",
+            {
+              name: "Recordatorio de descanso",
+              importance: Notifications.AndroidImportance.MAX,
+              vibrationPattern: [0, 250, 150, 250],
+              sound: "default",
+              lockscreenVisibility:
+                Notifications.AndroidNotificationVisibility.PUBLIC,
+            },
+          );
+        }
+
+        notificationsReadyRef.current = true;
+      }
+
+      if (notificationIdRef.current) {
+        await Notifications.cancelScheduledNotificationAsync(
+          notificationIdRef.current,
+        );
+      }
+
+      const notificationId = await Notifications.scheduleNotificationAsync({
+        content: {
+          title,
+          body,
+          sound: "default",
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
+          date: new Date(Date.now() + durationSeconds * 1000),
+        },
+      });
+
+      notificationIdRef.current = notificationId;
+    } catch (_error) {
+      return;
+    }
+  };
+
+  const cancelScheduledNotification = async (notificationIdRef: {
+    current: string | null;
+  }) => {
+    if (!notificationIdRef.current) {
+      return;
+    }
+
+    try {
+      const Notifications = await import("expo-notifications");
+      await Notifications.cancelScheduledNotificationAsync(
+        notificationIdRef.current,
+      );
+    } catch (_error) {
+      // Ignore cancellation failures when the notification already fired.
+    } finally {
+      notificationIdRef.current = null;
+    }
+  };
+
+  const showScreenNotice = (
+    title: string,
+    body: string,
+    tone: "accent" | "success",
+  ) => {
+    Vibration.vibrate([0, 180, 80, 180]);
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setScreenNotice({ title, body, tone });
   };
 
   const notifyWithSoundAndVibration = async (title: string, body: string) => {
@@ -314,12 +565,49 @@ export default function ExerciseDetailScreen() {
     }
   };
 
+  if (!token) {
+    return (
+      <TaurosScreen>
+        <TaurosHeader title="Ejercicio" onBack={() => router.back()} />
+        <TaurosAuthCard />
+      </TaurosScreen>
+    );
+  }
+
+  if (!displayExercise) {
+    return (
+      <TaurosScreen>
+        <TaurosHeader
+          title="Ejercicio no encontrado"
+          onBack={() => router.back()}
+        />
+        <TaurosCard>
+          <Text style={styles.emptyText}>
+            No se encontró el ejercicio solicitado.
+          </Text>
+        </TaurosCard>
+      </TaurosScreen>
+    );
+  }
+
   return (
     <TaurosScreen>
       <TaurosHeader
         title={displayExercise.nombre}
         subtitle={`${displayExercise.categoria} · ${displayExercise.tipo}`}
-        onBack={() => router.back()}
+        onBack={() => {
+          const destPlanId = planId || activePlan?.id;
+          const destDayId = dayId || targetDay?.id;
+          if (destPlanId && destDayId) {
+            router.push({
+              pathname: "/plan/[id]",
+              params: { id: destPlanId, day: destDayId },
+            });
+            return;
+          }
+
+          router.back();
+        }}
         right={
           <TaurosPill
             label={completed ? "Hecho" : "Pendiente"}
@@ -327,6 +615,27 @@ export default function ExerciseDetailScreen() {
           />
         }
       />
+
+      {screenNotice ? (
+        <TaurosCard
+          style={[
+            styles.noticeCard,
+            screenNotice.tone === "success"
+              ? styles.noticeCardSuccess
+              : styles.noticeCardAccent,
+          ]}
+        >
+          <View style={styles.noticeHeader}>
+            <Text style={styles.noticeTitle}>{screenNotice.title}</Text>
+            <TaurosButton
+              compact
+              label="Cerrar"
+              onPress={() => setScreenNotice(null)}
+            />
+          </View>
+          <Text style={styles.noticeBody}>{screenNotice.body}</Text>
+        </TaurosCard>
+      ) : null}
 
       <TaurosCard style={styles.heroCard}>
         <View style={styles.heroVisualStack}>
@@ -338,14 +647,16 @@ export default function ExerciseDetailScreen() {
             <Text style={styles.exerciseMeta}>
               {displayExercise.categoria} · {displayExercise.tipo}
             </Text>
-            <View style={styles.machineBadge}>
-              <Text style={styles.machineBadgeLabel}>Maquina</Text>
-              <Text style={styles.machineBadgeValue}>
-                {displayExercise.maquina
-                  ? `${displayExercise.maquina.nombre} ${displayExercise.maquina.numero}`
-                  : "Sin maquina asignada"}
-              </Text>
-            </View>
+            {displayExercise.maquina ? (
+              <View style={styles.machineBadge}>
+                <Text style={styles.machineBadgeLabel}>
+                  {`Maquina #${displayExercise.maquina.numero}`}
+                </Text>
+                <Text style={styles.machineBadgeValue}>
+                  {displayExercise.maquina.nombre}
+                </Text>
+              </View>
+            ) : null}
           </View>
         </View>
       </TaurosCard>
@@ -356,10 +667,56 @@ export default function ExerciseDetailScreen() {
       >
         <TaurosCard style={styles.compactCard}>
           <View style={styles.exerciseGrid}>
-            <InfoPill label="Series y reps" value={seriesText} />
+            <InfoPill
+              label={displayTimedSeconds ? "Series y tiempo" : "Series y reps"}
+              value={seriesText}
+            />
             <InfoPill label="Carga" value={chargeText} />
             <InfoPill label="Descanso" value={formatSeconds(restDuration)} />
           </View>
+
+          {exerciseWarmups.length ? (
+            <View style={styles.warmupsCard}>
+              <Text style={styles.warmupsTitle}>Calentamientos</Text>
+              {sortedWarmups.map((warmup) => (
+                <View key={warmup.id} style={styles.warmupRow}>
+                  <Text style={styles.warmupIndex}>C{warmup.orden}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.warmupText}>
+                      {formatExerciseVolume(
+                        warmup.series,
+                        warmup.repeticiones,
+                        warmup.tiempoSegundos,
+                      )}
+                    </Text>
+                    <Text style={styles.warmupSubtext}>
+                      Intensidad: {warmup.intensidad || "-"}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+
+              <View style={styles.restRow}>
+                <Text style={styles.restLabel}>Descanso calentamiento</Text>
+                <Text style={styles.restValue}>
+                  {formatSeconds(warmupRestSecondsLeft)}
+                </Text>
+              </View>
+
+              <TaurosButton
+                compact
+                label={
+                  completedWarmups >= sortedWarmups.length
+                    ? "Calentamientos completados"
+                    : currentWarmup
+                      ? `Completar calentamiento ${currentWarmup.orden}`
+                      : "Completar calentamiento"
+                }
+                onPress={onCompleteWarmup}
+                disabled={completedWarmups >= sortedWarmups.length}
+              />
+            </View>
+          ) : null}
 
           <View style={styles.fieldRow}>
             <Text style={styles.inputLabel}>Carga usada en este ejercicio</Text>
@@ -386,7 +743,9 @@ export default function ExerciseDetailScreen() {
           <View style={styles.intervalsCard}>
             <View style={styles.intervalHeader}>
               <Text style={styles.intervalTitle}>
-                Intervalos de repeticiones
+                {displayTimedSeconds
+                  ? "Intervalos de tiempo"
+                  : "Intervalos de repeticiones"}
               </Text>
               <Text style={styles.intervalCounter}>
                 {completedIntervals}/{intervalsTarget}
@@ -419,7 +778,9 @@ export default function ExerciseDetailScreen() {
               label={
                 completedIntervals >= intervalsTarget
                   ? "Intervalos completados"
-                  : "Siguiente repetición"
+                  : displayTimedSeconds
+                    ? "Siguiente intervalo"
+                    : "Siguiente repetición"
               }
               onPress={onCompleteInterval}
               disabled={completedIntervals >= intervalsTarget}
@@ -464,15 +825,6 @@ export default function ExerciseDetailScreen() {
   );
 }
 
-function InfoPill({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.infoPill}>
-      <Text style={styles.infoPillLabel}>{label}</Text>
-      <Text style={styles.infoPillValue}>{value}</Text>
-    </View>
-  );
-}
-
 function ExerciseVideo({ source }: { source: string }) {
   const player = useVideoPlayer(source, (videoPlayer) => {
     videoPlayer.loop = true;
@@ -491,18 +843,26 @@ function ExerciseVideo({ source }: { source: string }) {
   );
 }
 
+function InfoPill({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.infoPill}>
+      <Text style={styles.infoPillLabel}>{label}</Text>
+      <Text style={styles.infoPillValue}>{value}</Text>
+    </View>
+  );
+}
+
 function parseIntervalsFromSeries(series?: string | number | null) {
   if (series === undefined || series === null) {
     return 3;
   }
 
   const seriesStr = typeof series === "number" ? String(series) : series;
-
   const numbers =
     seriesStr
       ?.match(/\d+/g)
       ?.map(Number)
-      .filter((value) => Number.isFinite(value)) ?? [];
+      ?.filter((value) => Number.isFinite(value)) ?? [];
 
   if (!numbers.length) {
     return 3;
@@ -531,6 +891,38 @@ function formatSeconds(totalSeconds: number) {
     .toString()
     .padStart(2, "0");
   return `${minutes}:${seconds}`;
+}
+
+function formatExerciseVolume(
+  series: string | number | null | undefined,
+  reps: string | number | null | undefined,
+  tiempoSegundos?: number | null,
+) {
+  const parsedSeries = Number(series);
+  const safeSeries =
+    Number.isFinite(parsedSeries) && parsedSeries > 0
+      ? parsedSeries
+      : String(series || "1");
+
+  if (Number.isFinite(Number(tiempoSegundos)) && Number(tiempoSegundos) > 0) {
+    return `${safeSeries} series · ${formatDuration(Number(tiempoSegundos))}`;
+  }
+
+  return `${safeSeries} series · ${String(reps || "-")} reps`;
+}
+
+function formatDuration(seconds: number) {
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return "0 seg";
+  }
+
+  if (seconds < 60) {
+    return `${seconds} seg`;
+  }
+
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return secs ? `${mins} min ${secs} seg` : `${mins} min`;
 }
 
 const styles = StyleSheet.create({
@@ -577,6 +969,50 @@ const styles = StyleSheet.create({
   },
   infoPillLabel: { color: "#a0a0a0", fontSize: 12 },
   infoPillValue: { color: "#fff", fontWeight: "800", fontSize: 13 },
+  warmupsCard: {
+    gap: 10,
+    padding: 12,
+    borderRadius: 16,
+    backgroundColor: "#171717",
+    borderWidth: 1,
+    borderColor: "#2b2b2b",
+  },
+  warmupsTitle: { color: "#fff", fontWeight: "800", fontSize: 13 },
+  warmupRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 10,
+    borderRadius: 12,
+    backgroundColor: "#121212",
+    borderWidth: 1,
+    borderColor: "#2a2a2a",
+  },
+  warmupIndex: {
+    color: "#f4ae1a",
+    fontWeight: "900",
+    width: 30,
+    textAlign: "center",
+  },
+  warmupText: { color: "#fff", fontWeight: "700", fontSize: 12 },
+  warmupSubtext: { color: "#a8a8a8", marginTop: 2, fontSize: 12 },
+  noticeCard: { gap: 8, borderWidth: 1 },
+  noticeCardAccent: {
+    borderColor: "rgba(244, 174, 26, 0.35)",
+    backgroundColor: "#16110a",
+  },
+  noticeCardSuccess: {
+    borderColor: "rgba(69, 196, 111, 0.35)",
+    backgroundColor: "#0f1710",
+  },
+  noticeHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  noticeTitle: { color: "#fff", fontSize: 15, fontWeight: "900", flex: 1 },
+  noticeBody: { color: "#d7d7d7", fontSize: 13, lineHeight: 18 },
   inputLabel: { color: "#fff", fontWeight: "800", fontSize: 13 },
   input: {
     borderRadius: 14,

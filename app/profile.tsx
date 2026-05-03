@@ -19,6 +19,10 @@ import {
     TaurosScreen,
     TaurosSection,
 } from "@/components/tauros-ui";
+import {
+    type BackendNutritionPlan,
+    useTaurosBackend,
+} from "@/lib/tauros-backend";
 import { useTaurosSession } from "@/lib/tauros-session";
 
 export default function ProfileScreen() {
@@ -31,6 +35,8 @@ export default function ProfileScreen() {
     updateProfile,
     changePassword,
   } = useTaurosSession();
+  const { nutritionPlans } = useTaurosBackend();
+  const latestNutritionPlan = pickLatestNutritionPlan(nutritionPlans);
 
   const [nombre, setNombre] = useState(user?.nombre ?? "");
   const [apellido, setApellido] = useState(user?.apellido ?? "");
@@ -220,6 +226,14 @@ export default function ProfileScreen() {
                 router.replace("/");
               }}
             />
+
+            {latestNutritionPlan ? (
+              <TaurosButton
+                label="Ver plan nutricional"
+                variant="secondary"
+                onPress={() => router.push("/plan-nutricional")}
+              />
+            ) : null}
           </TaurosCard>
 
           {showPersonalEdit ? (
@@ -356,6 +370,18 @@ export default function ProfileScreen() {
       </KeyboardAvoidingView>
     </TaurosScreen>
   );
+}
+
+function pickLatestNutritionPlan(plans: BackendNutritionPlan[]) {
+  if (!plans.length) {
+    return null;
+  }
+
+  return plans.reduce<BackendNutritionPlan>((latest, current) => {
+    const latestTime = new Date(latest.createdAt || 0).getTime();
+    const currentTime = new Date(current.createdAt || 0).getTime();
+    return currentTime > latestTime ? current : latest;
+  });
 }
 
 const styles = StyleSheet.create({

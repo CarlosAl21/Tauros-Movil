@@ -54,7 +54,7 @@ export default function HomeScreen() {
     return (
       <TaurosScreen>
         <TaurosCard>
-          <Text style={styles.loadingText}>Cargando datos del backend...</Text>
+          <Text style={styles.loadingText}>Cargando datos.</Text>
         </TaurosCard>
       </TaurosScreen>
     );

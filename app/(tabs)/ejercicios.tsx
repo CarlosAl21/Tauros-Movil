@@ -89,26 +89,32 @@ export default function ExercisesScreen() {
                   <TaurosPill label={exercise.tipo} tone="muted" />
                 </View>
 
-                <View style={styles.machineBlock}>
-                  <View style={styles.machineNumberBox}>
-                    <Text style={styles.machineNumber}>
-                      {exercise.maquina ? exercise.maquina.numero : "—"}
-                    </Text>
+                {exercise.maquina ? (
+                  <View style={styles.machineBlock}>
+                    <View style={styles.machineNumberBox}>
+                      <Text style={styles.machineNumber}>
+                        {exercise.maquina.numero}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.machineTitle}>Máquina</Text>
+                      <Text style={styles.machineText}>
+                        {`${exercise.maquina.nombre} ${exercise.maquina.numero}`}
+                      </Text>
+                    </View>
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.machineTitle}>Máquina</Text>
-                    <Text style={styles.machineText}>
-                      {exercise.maquina
-                        ? `${exercise.maquina.nombre} ${exercise.maquina.numero}`
-                        : "Sin máquina asignada"}
-                    </Text>
-                  </View>
-                </View>
+                ) : null}
 
                 <View style={styles.statsRow}>
                   <View style={styles.statItem}>
-                    <Text style={styles.statLabel}>Series</Text>
-                    <Text style={styles.statValue}>{exercise.series}</Text>
+                    <Text style={styles.statLabel}>
+                      {exercise.tiempoSegundos ? "Series y tiempo" : "Series"}
+                    </Text>
+                    <Text style={styles.statValue}>
+                      {exercise.tiempoSegundos
+                        ? `${exercise.series} · ${formatDuration(exercise.tiempoSegundos)}`
+                        : exercise.series}
+                    </Text>
                   </View>
                   <View style={styles.statItem}>
                     <Text style={styles.statLabel}>Descanso</Text>
@@ -167,6 +173,20 @@ function VideoPreview({ source }: { source: string }) {
       </View>
     </View>
   );
+}
+
+function formatDuration(seconds: number) {
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return "0s";
+  }
+
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return secs ? `${mins}m ${secs}s` : `${mins}m`;
 }
 
 const styles = StyleSheet.create({
