@@ -251,12 +251,15 @@ export const taurosPlans: TaurosPlan[] = [
     duracionDias: 4,
     esPlantilla: false,
     activo: true,
+    completado: false,
     dias: [
       {
         id: "dia-1",
         numeroDia: 1,
         nombre: "Pierna y estabilidad",
         descripcion: "Trabajo principal en cuádriceps, glúteos y gemelos.",
+        descansoSegundos: 60,
+        finalizada: false,
         ejercicios: [
           {
             exerciseId: "sentadilla-hack",
@@ -282,8 +285,9 @@ export const taurosPlans: TaurosPlan[] = [
         id: "dia-2",
         numeroDia: 2,
         nombre: "Empuje controlado",
-        descripcion:
-          "Sesión de pecho, hombro y tríceps para mantener continuidad.",
+        descripcion: "Sesión de pecho, hombro y tríceps para mantener continuidad.",
+        descansoSegundos: 60,
+        finalizada: false,
         ejercicios: [
           {
             exerciseId: "press-pecho-maquina",
@@ -310,6 +314,8 @@ export const taurosPlans: TaurosPlan[] = [
         numeroDia: 3,
         nombre: "Tiron y postura",
         descripcion: "Espalda y bíceps con foco en estabilidad escapular.",
+        descansoSegundos: 60,
+        finalizada: false,
         ejercicios: [
           {
             exerciseId: "jalon-pecho",
@@ -336,6 +342,8 @@ export const taurosPlans: TaurosPlan[] = [
         numeroDia: 4,
         nombre: "Recuperacion activa",
         descripcion: "Cardio suave, movilidad y repaso de cargas.",
+        descansoSegundos: 60,
+        finalizada: false,
         ejercicios: [
           {
             exerciseId: "sentadilla-hack",
@@ -359,12 +367,15 @@ export const taurosPlans: TaurosPlan[] = [
     duracionDias: 5,
     esPlantilla: true,
     activo: false,
+    completado: false,
     dias: [
       {
         id: "dia-5",
         numeroDia: 1,
         nombre: "Empuje pesado",
         descripcion: "Cargas altas y descansos más amplios.",
+        descansoSegundos: 60,
+        finalizada: false,
         ejercicios: [
           {
             exerciseId: "press-pecho-maquina",
@@ -378,8 +389,8 @@ export const taurosPlans: TaurosPlan[] = [
         ],
       },
     ],
-  },
-];
+      },
+    ];
 
 export const taurosEvents: TaurosEvent[] = [
   {

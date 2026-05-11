@@ -101,11 +101,11 @@ function pickLatestNutritionPlan(plans: BackendNutritionPlan[]) {
     return null;
   }
 
-  return plans.reduce<BackendNutritionPlan>((latest, current) => {
+    return plans.reduce<BackendNutritionPlan>((latest, current) => {
     const latestTime = new Date(latest.createdAt || 0).getTime();
     const currentTime = new Date(current.createdAt || 0).getTime();
     return currentTime > latestTime ? current : latest;
-  });
+    }, plans[0]);
 }
 
 function formatDate(value?: string) {

@@ -271,8 +271,8 @@ export function mapBackendPlans(
             rutinaEjercicio.ejercicio?.ejercicioId ??
             rutinaEjercicio.rutinaEjercicioId,
           orden: rutinaEjercicio.orden,
-          series: rutinaEjercicio.series,
-          repeticiones: rutinaEjercicio.repeticiones,
+          series: String(rutinaEjercicio.series ?? ''),
+          repeticiones: String(rutinaEjercicio.repeticiones ?? ''),
           tiempoSegundos: Number.isFinite(
             Number(
               rutinaEjercicio.tiempoSegundos ??
@@ -334,7 +334,7 @@ export function pickLatestAssignedPlan(plans: TaurosPlan[]) {
     }
 
     return latest;
-  });
+  }, plans[0]);
 }
 
 export function mapBackendEvents(

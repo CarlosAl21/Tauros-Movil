@@ -231,7 +231,7 @@ export default function ProfileScreen() {
               <TaurosButton
                 label="Ver plan nutricional"
                 variant="secondary"
-                onPress={() => router.push("/plan-nutricional")}
+                onPress={() => router.push("/plan-nutricional" as never)}
               />
             ) : null}
           </TaurosCard>
@@ -381,7 +381,7 @@ function pickLatestNutritionPlan(plans: BackendNutritionPlan[]) {
     const latestTime = new Date(latest.createdAt || 0).getTime();
     const currentTime = new Date(current.createdAt || 0).getTime();
     return currentTime > latestTime ? current : latest;
-  });
+  }, plans[0]);
 }
 
 const styles = StyleSheet.create({
