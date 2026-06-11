@@ -69,7 +69,11 @@
   "private": true,
   "expo": {
     "install": {
-      "exclude": ["jest", "@types/jest", "babel-jest"]
+      "exclude": [
+        "jest",
+        "@types/jest",
+        "babel-jest"
+      ]
     }
   },
   "overrides": {
