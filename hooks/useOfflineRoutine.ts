@@ -1,9 +1,33 @@
 import { useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { downloadMedia, getLocalPath, isDownloaded } from '../lib/mediaCache';
+import { downloadMedia } from '../lib/mediaCache';
+import type { BackendPlan } from '../lib/tauros-backend';
 
 const OFFLINE_ROUTINE_KEY = 'offline_routines';
 const ACTIONS_QUEUE_KEY = 'offline_actions_queue';
+
+/**
+ * Extract all media URLs from a BackendPlan.
+ * Each exercise can have a video (linkVideo) and an animation (linkAM).
+ * Returns an array of { id, url } pairs suitable for downloadMedia.
+ */
+function extractMediaItems(plan: BackendPlan): Array<{ id: string; url: string }> {
+  const items: Array<{ id: string; url: string }> = [];
+  for (const day of plan.rutinasDia ?? []) {
+    for (const re of day.rutinasEjercicio ?? []) {
+      const ejercicio = re.ejercicio;
+      if (!ejercicio) continue;
+      const { ejercicioId, linkVideo, linkAM } = ejercicio;
+      if (linkVideo) {
+        items.push({ id: `${ejercicioId}_video`, url: linkVideo });
+      }
+      if (linkAM) {
+        items.push({ id: `${ejercicioId}_am`, url: linkAM });
+      }
+    }
+  }
+  return items;
+}
 
 export function useOfflineRoutine() {
   const [routines, setRoutines] = useState<Record<string, any>>({});
@@ -15,22 +39,24 @@ export function useOfflineRoutine() {
     })();
   }, []);
 
-  async function saveRoutineForOffline(routineId: string, routineData: any) {
-    // routineData should include media items with {id, url}
-    // Download media and update local paths
-    for (const item of routineData.media || []) {
+  async function saveRoutineForOffline(routineId: string, routineData: BackendPlan) {
+    // Extract media items from the real BackendPlan shape and download them.
+    const mediaItems = extractMediaItems(routineData);
+    for (const item of mediaItems) {
       try {
-        const localPath = await downloadMedia(item.id, item.url);
-        item.localPath = localPath;
+        await downloadMedia(item.id, item.url);
       } catch (e) {
-        // ignore individual failures
+        // ignore individual failures — best-effort cache
       }
     }
 
-    const copy = { ...(routines as any) };
-    copy[routineId] = { data: routineData, cachedAt: Date.now() };
-    await AsyncStorage.setItem(OFFLINE_ROUTINE_KEY, JSON.stringify(copy));
-    setRoutines(copy);
+    // Read the latest stored state directly from AsyncStorage to avoid
+    // stale-closure issues when called outside the component lifecycle.
+    const raw = await AsyncStorage.getItem(OFFLINE_ROUTINE_KEY);
+    const current: Record<string, any> = raw ? JSON.parse(raw) : {};
+    current[routineId] = { data: routineData, cachedAt: Date.now() };
+    await AsyncStorage.setItem(OFFLINE_ROUTINE_KEY, JSON.stringify(current));
+    setRoutines(current);
   }
 
   async function getRoutine(routineId: string) {

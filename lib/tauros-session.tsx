@@ -1,7 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ReactNode, createContext, useContext, useEffect, useMemo, useState } from 'react';
+import * as SecureStore from 'expo-secure-store';
+import { ReactNode, createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
-import { taurosRequest } from './tauros-api';
+import { taurosRequest, registerSessionExpiredCallback, unregisterSessionExpiredCallback, REFRESH_TOKEN_SECURE_KEY } from './tauros-api';
 
 export type TaurosAuthUser = {
   userId: string;
@@ -55,6 +56,8 @@ export function TaurosSessionProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<TaurosAuthUser | null>(null);
   const [persistentWeight, setPersistentWeightState] = useState(0);
   const [loadingSession, setLoadingSession] = useState(true);
+  // Use a ref to hold logout so the registered callback is always current
+  const logoutRef = useRef<(() => Promise<void>) | null>(null);
 
   useEffect(() => {
     const loadSession = async () => {
@@ -90,7 +93,16 @@ export function TaurosSessionProvider({ children }: { children: ReactNode }) {
     loadSession();
   }, []);
 
-  const persistAuth = async (nextToken: string, nextUser: TaurosAuthUser) => {
+  // Register a callback in tauros-api so that a failed token refresh triggers
+  // an immediate in-memory logout without requiring callers to handle it.
+  useEffect(() => {
+    registerSessionExpiredCallback(() => {
+      logoutRef.current?.().catch(() => {});
+    });
+    return () => unregisterSessionExpiredCallback();
+  }, []);
+
+  const persistAuth = async (nextToken: string, nextUser: TaurosAuthUser, refreshToken?: string) => {
     setToken(nextToken);
     setUser(nextUser);
     const storedWeight = await AsyncStorage.getItem(getWeightKey(nextUser.userId));
@@ -99,6 +111,9 @@ export function TaurosSessionProvider({ children }: { children: ReactNode }) {
     await Promise.all([
       AsyncStorage.setItem(TOKEN_KEY, nextToken),
       AsyncStorage.setItem(USER_KEY, JSON.stringify(nextUser)),
+      refreshToken
+        ? SecureStore.setItemAsync(REFRESH_TOKEN_SECURE_KEY, refreshToken)
+        : Promise.resolve(),
     ]);
   };
 
@@ -139,32 +154,48 @@ export function TaurosSessionProvider({ children }: { children: ReactNode }) {
   };
 
   const login = async (payload: TaurosLoginPayload) => {
-    const response = await taurosRequest<{ access_token: string; user: TaurosAuthUser }>('/auth/login', {
+    const response = await taurosRequest<{ access_token: string; refresh_token: string; user: TaurosAuthUser }>('/auth/login', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
 
-    await persistAuth(response.access_token, response.user);
+    await persistAuth(response.access_token, response.user, response.refresh_token);
   };
 
   const register = async (payload: TaurosRegisterPayload) => {
-    const response = await taurosRequest<{ access_token: string; user: TaurosAuthUser }>('/auth/register', {
+    const response = await taurosRequest<{ access_token: string; refresh_token: string; user: TaurosAuthUser }>('/auth/register', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
 
-    await persistAuth(response.access_token, response.user);
+    await persistAuth(response.access_token, response.user, response.refresh_token);
   };
 
   const logout = async () => {
+    // Revoke the refresh token on the server (best-effort)
+    try {
+      const refreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN_SECURE_KEY);
+      if (refreshToken) {
+        await taurosRequest('/auth/logout', {
+          method: 'POST',
+          body: JSON.stringify({ refreshToken }),
+        }).catch(() => {});
+      }
+    } catch {}
+
     setToken(null);
     setUser(null);
     setPersistentWeightState(0);
     await Promise.all([
       AsyncStorage.removeItem(TOKEN_KEY),
       AsyncStorage.removeItem(USER_KEY),
+      SecureStore.deleteItemAsync(REFRESH_TOKEN_SECURE_KEY).catch(() => {}),
     ]);
   };
+
+  // Keep the ref current so the session-expired callback always calls the
+  // latest closure (avoids stale-capture issues with useCallback deps).
+  logoutRef.current = logout;
 
   const setPersistentWeight = async (value: number) => {
     if (!token || !user) {

@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { TaurosAuthCard } from "@/components/tauros-auth-card";
@@ -14,12 +14,14 @@ import {
     TaurosSection,
 } from "@/components/tauros-ui";
 import { useTaurosBackend } from "@/lib/tauros-backend";
+import type { BackendPlan } from "@/lib/tauros-backend";
 import {
     mapBackendExercises,
     mapBackendPlans,
     pickLatestAssignedPlan,
 } from "@/lib/tauros-mappers";
 import { useTaurosSession } from "@/lib/tauros-session";
+import { useOfflineRoutine } from "@/hooks/useOfflineRoutine";
 import { TaurosSuggestionForm } from "../../components/tauros-suggestion-form";
 
 export default function PlanDetailScreen() {
@@ -30,7 +32,22 @@ export default function PlanDetailScreen() {
   const { token, user } = useTaurosSession();
   const { exercises, plans, toggleRoutineExerciseCompletion } =
     useTaurosBackend();
+  const { getRoutine } = useOfflineRoutine();
   const [markingKey, setMarkingKey] = useState<string | null>(null);
+
+  // Cache-first: seed local state with any previously cached plan so the
+  // screen is immediately usable while the network fetch runs in background.
+  const [cachedPlan, setCachedPlan] = useState<BackendPlan | null>(null);
+  useEffect(() => {
+    if (!planId) return;
+    getRoutine(planId)
+      .then((entry) => {
+        if (entry?.data) setCachedPlan(entry.data as BackendPlan);
+      })
+      .catch(() => {});
+    // Only run on mount / when planId changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planId]);
 
   if (!token) {
     return (
@@ -42,7 +59,17 @@ export default function PlanDetailScreen() {
   }
 
   const displayExercises = mapBackendExercises(exercises);
-  const displayPlans = mapBackendPlans(plans, user?.userId);
+  // Merge live plans with the offline-cached plan so the screen renders
+  // immediately even before the network request completes.
+  const allRawPlans = cachedPlan
+    ? [
+        cachedPlan,
+        ...plans.filter(
+          (p) => p.planEntrenamientoId !== cachedPlan.planEntrenamientoId,
+        ),
+      ]
+    : plans;
+  const displayPlans = mapBackendPlans(allRawPlans, user?.userId);
   const latestAssignedPlan = pickLatestAssignedPlan(
     displayPlans.filter((item) => !item.esPlantilla && item.activo),
   );
