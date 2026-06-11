@@ -40,23 +40,22 @@ export function useOfflineRoutine() {
   }, []);
 
   async function saveRoutineForOffline(routineId: string, routineData: BackendPlan) {
-    // Extract media items from the real BackendPlan shape and download them.
-    const mediaItems = extractMediaItems(routineData);
-    for (const item of mediaItems) {
-      try {
-        await downloadMedia(item.id, item.url);
-      } catch (e) {
-        // ignore individual failures — best-effort cache
-      }
-    }
-
-    // Read the latest stored state directly from AsyncStorage to avoid
-    // stale-closure issues when called outside the component lifecycle.
+    // Save plan data first so it's available offline even if media download fails.
     const raw = await AsyncStorage.getItem(OFFLINE_ROUTINE_KEY);
     const current: Record<string, any> = raw ? JSON.parse(raw) : {};
     current[routineId] = { data: routineData, cachedAt: Date.now() };
     await AsyncStorage.setItem(OFFLINE_ROUTINE_KEY, JSON.stringify(current));
     setRoutines(current);
+
+    // Download media in background — best-effort, does not block the save.
+    const mediaItems = extractMediaItems(routineData);
+    for (const item of mediaItems) {
+      try {
+        await downloadMedia(item.id, item.url);
+      } catch {
+        // ignore individual failures
+      }
+    }
   }
 
   async function getRoutine(routineId: string) {

@@ -43,8 +43,17 @@ export default function PlanDetailScreen() {
   useEffect(() => {
     if (!planId) return;
     getRoutine(planId)
-      .then((entry) => {
-        if (entry?.data) setCachedPlan(entry.data as BackendPlan);
+      .then(async (entry) => {
+        if (entry?.data) {
+          setCachedPlan(entry.data as BackendPlan);
+          return;
+        }
+        // Secondary fallback: find the plan inside the full offline list
+        const raw = await AsyncStorage.getItem("offline_plans_list");
+        if (!raw) return;
+        const list = JSON.parse(raw) as BackendPlan[];
+        const found = list.find((p) => p.planEntrenamientoId === planId);
+        if (found) setCachedPlan(found);
       })
       .catch(() => {});
     AsyncStorage.getItem("offline_exercises_catalog")
