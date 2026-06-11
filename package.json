@@ -67,6 +67,11 @@
     "typescript": "~5.9.2"
   },
   "private": true,
+  "expo": {
+    "install": {
+      "exclude": ["jest", "@types/jest", "babel-jest"]
+    }
+  },
   "overrides": {
     "react-test-renderer": "19.1.0"
   }
