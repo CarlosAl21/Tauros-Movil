@@ -1,3 +1,4 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
@@ -27,6 +28,7 @@ import {
     TaurosSection,
 } from "@/components/tauros-ui";
 import { useTaurosBackend } from "@/lib/tauros-backend";
+import type { BackendExercise, BackendPlan } from "@/lib/tauros-backend";
 import {
     findDisplayExerciseById,
     findPlanExercise,
@@ -66,6 +68,18 @@ export default function ExerciseDetailScreen() {
   const { exercises, plans, toggleRoutineExerciseCompletion } =
     useTaurosBackend();
 
+  const [cachedExercises, setCachedExercises] = useState<BackendExercise[]>([]);
+  const [cachedPlans, setCachedPlans] = useState<BackendPlan[]>([]);
+
+  useEffect(() => {
+    AsyncStorage.getItem("offline_exercises_catalog")
+      .then((raw) => { if (raw) setCachedExercises(JSON.parse(raw)); })
+      .catch(() => {});
+    AsyncStorage.getItem("offline_plans_list")
+      .then((raw) => { if (raw) setCachedPlans(JSON.parse(raw)); })
+      .catch(() => {});
+  }, []);
+
   const [carga, setCarga] = useState("");
   const [nota, setNota] = useState("");
   const [completed, setCompleted] = useState(false);
@@ -90,8 +104,8 @@ export default function ExerciseDetailScreen() {
     tone: "accent" | "success";
   } | null>(null);
 
-  const displayExercises = mapBackendExercises(exercises);
-  const displayPlans = mapBackendPlans(plans, user?.userId);
+  const displayExercises = mapBackendExercises(exercises.length ? exercises : cachedExercises);
+  const displayPlans = mapBackendPlans(plans.length ? plans : cachedPlans, user?.userId);
   const displayExercise =
     findDisplayExerciseById(exercises, exerciseId) ||
     displayExercises.find((item) => item.id === exerciseId) ||
