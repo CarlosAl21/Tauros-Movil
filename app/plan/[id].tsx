@@ -1,4 +1,5 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
@@ -14,7 +15,7 @@ import {
     TaurosSection,
 } from "@/components/tauros-ui";
 import { useTaurosBackend } from "@/lib/tauros-backend";
-import type { BackendPlan } from "@/lib/tauros-backend";
+import type { BackendPlan, BackendExercise } from "@/lib/tauros-backend";
 import {
     mapBackendExercises,
     mapBackendPlans,
@@ -38,11 +39,17 @@ export default function PlanDetailScreen() {
   // Cache-first: seed local state with any previously cached plan so the
   // screen is immediately usable while the network fetch runs in background.
   const [cachedPlan, setCachedPlan] = useState<BackendPlan | null>(null);
+  const [cachedExercises, setCachedExercises] = useState<BackendExercise[]>([]);
   useEffect(() => {
     if (!planId) return;
     getRoutine(planId)
       .then((entry) => {
         if (entry?.data) setCachedPlan(entry.data as BackendPlan);
+      })
+      .catch(() => {});
+    AsyncStorage.getItem("offline_exercises_catalog")
+      .then((raw) => {
+        if (raw) setCachedExercises(JSON.parse(raw) as BackendExercise[]);
       })
       .catch(() => {});
     // Only run on mount / when planId changes
@@ -58,7 +65,7 @@ export default function PlanDetailScreen() {
     );
   }
 
-  const displayExercises = mapBackendExercises(exercises);
+  const displayExercises = mapBackendExercises(exercises.length ? exercises : cachedExercises);
   // Merge live plans with the offline-cached plan so the screen renders
   // immediately even before the network request completes.
   const allRawPlans = cachedPlan

@@ -13,17 +13,18 @@ import {
     TaurosSection,
 } from "@/components/tauros-ui";
 import { useTaurosBackend } from "@/lib/tauros-backend";
-import type { BackendPlan } from "@/lib/tauros-backend";
+import type { BackendPlan, BackendExercise } from "@/lib/tauros-backend";
 import { mapBackendPlans, pickLatestAssignedPlan } from "@/lib/tauros-mappers";
 import { useTaurosSession } from "@/lib/tauros-session";
 import { useOfflineRoutine } from "@/hooks/useOfflineRoutine";
 
 const OFFLINE_PLANS_KEY = "offline_plans_list";
+const OFFLINE_EXERCISES_KEY = "offline_exercises_catalog";
 
 export default function PlansScreen() {
   const router = useRouter();
   const { user } = useTaurosSession();
-  const { plans, refresh, error } = useTaurosBackend();
+  const { plans, exercises, refresh, error } = useTaurosBackend();
   const { saveRoutineForOffline } = useOfflineRoutine();
   const [isOffline, setIsOffline] = useState(false);
   const [offlinePlans, setOfflinePlans] = useState<BackendPlan[]>([]);
@@ -44,6 +45,15 @@ export default function PlansScreen() {
       saveRoutineForOffline(plan.planEntrenamientoId, plan).catch(() => {});
     }
   }, [plans, saveRoutineForOffline]);
+
+  // Cache the exercises catalog so detail screen has names/machine info offline
+  const lastSavedExercisesRef = useRef<number>(0);
+  useEffect(() => {
+    if (!exercises.length) return;
+    if (exercises.length === lastSavedExercisesRef.current) return;
+    lastSavedExercisesRef.current = exercises.length;
+    AsyncStorage.setItem(OFFLINE_EXERCISES_KEY, JSON.stringify(exercises)).catch(() => {});
+  }, [exercises]);
 
   // When network fetch fails, fall back to locally cached plans
   useEffect(() => {
