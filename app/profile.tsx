@@ -7,10 +7,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import {
     Alert,
-    KeyboardAvoidingView,
-    Platform,
     Pressable,
-    ScrollView,
     StyleSheet,
     Text,
     TextInput,
@@ -216,224 +213,215 @@ export default function ProfileScreen() {
         onBack={() => router.back()}
       />
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={{ flex: 1 }}
-        keyboardVerticalOffset={90}
-      >
-        <ScrollView
-          contentContainerStyle={styles.container}
-          keyboardShouldPersistTaps="handled"
-        >
-          <TaurosCard style={styles.card}>
-            <View style={styles.avatarWrap}>
-              <Image
-                source={require("../assets/images/tauros-logo.png")}
-                style={styles.avatar}
-                contentFit="contain"
-              />
-            </View>
+      <View style={styles.container}>
+        <TaurosCard style={styles.card}>
+          <View style={styles.avatarWrap}>
+            <Image
+              source={require("../assets/images/tauros-logo.png")}
+              style={styles.avatar}
+              contentFit="contain"
+            />
+          </View>
 
-            <Text style={styles.infoText}>Nombre: {fullName}</Text>
-            <Text style={styles.infoText}>Correo: {user?.correo || "-"}</Text>
-            <Text style={styles.infoText}>
-              Peso actual:{" "}
-              {persistentWeight ? `${persistentWeight} kg` : "No registrado"}
-            </Text>
+          <Text style={styles.infoText}>Nombre: {fullName}</Text>
+          <Text style={styles.infoText}>Correo: {user?.correo || "-"}</Text>
+          <Text style={styles.infoText}>
+            Peso actual:{" "}
+            {persistentWeight ? `${persistentWeight} kg` : "No registrado"}
+          </Text>
 
-            <TaurosButton
-              label={
-                showPersonalEdit
-                  ? "Ocultar edición personal"
-                  : "Editar datos personales"
+          <TaurosButton
+            label={
+              showPersonalEdit
+                ? "Ocultar edición personal"
+                : "Editar datos personales"
+            }
+            variant={showPersonalEdit ? "secondary" : "primary"}
+            onPress={() => {
+              setShowPersonalEdit((current) => !current);
+              if (!showPersonalEdit) {
+                setShowWeightForm(false);
               }
-              variant={showPersonalEdit ? "secondary" : "primary"}
-              onPress={() => {
-                setShowPersonalEdit((current) => !current);
-                if (!showPersonalEdit) {
-                  setShowWeightForm(false);
-                }
-              }}
-            />
+            }}
+          />
 
-            <TaurosButton
-              label={
-                showWeightForm ? "Ocultar registro de peso" : "Registrar peso"
+          <TaurosButton
+            label={
+              showWeightForm ? "Ocultar registro de peso" : "Registrar peso"
+            }
+            variant={showWeightForm ? "secondary" : "primary"}
+            onPress={() => {
+              setShowWeightForm((current) => !current);
+              if (!showWeightForm) {
+                setShowPersonalEdit(false);
               }
-              variant={showWeightForm ? "secondary" : "primary"}
-              onPress={() => {
-                setShowWeightForm((current) => !current);
-                if (!showWeightForm) {
-                  setShowPersonalEdit(false);
-                }
-              }}
-            />
+            }}
+          />
 
+          <TaurosButton
+            variant="ghost"
+            label="Cerrar sesión"
+            onPress={async () => {
+              await logout();
+              router.replace("/");
+            }}
+          />
+
+          <TaurosButton
+            variant="ghost"
+            label={deleting ? "Eliminando..." : "Eliminar cuenta"}
+            disabled={deleting}
+            onPress={confirmDeleteAccount}
+            style={styles.dangerButton}
+            labelStyle={styles.dangerButtonLabel}
+          />
+
+          {latestNutritionPlan ? (
             <TaurosButton
-              variant="ghost"
-              label="Cerrar sesión"
-              onPress={async () => {
-                await logout();
-                router.replace("/");
-              }}
+              label="Ver plan nutricional"
+              variant="secondary"
+              onPress={() => router.push("/plan-nutricional" as never)}
             />
-
-            <TaurosButton
-              variant="ghost"
-              label={deleting ? "Eliminando..." : "Eliminar cuenta"}
-              disabled={deleting}
-              onPress={confirmDeleteAccount}
-              style={styles.dangerButton}
-              labelStyle={styles.dangerButtonLabel}
-            />
-
-            {latestNutritionPlan ? (
-              <TaurosButton
-                label="Ver plan nutricional"
-                variant="secondary"
-                onPress={() => router.push("/plan-nutricional" as never)}
-              />
-            ) : null}
-          </TaurosCard>
-
-          {showPersonalEdit ? (
-            <TaurosSection
-              title="Editar datos personales"
-              subtitle="Aquí no se cambia el peso."
-            >
-              <TaurosCard style={styles.card}>
-                <View style={styles.fieldRow}>
-                  <Text style={styles.label}>Nombre</Text>
-                  <TextInput
-                    value={nombre}
-                    onChangeText={setNombre}
-                    style={styles.input}
-                    placeholder="Nombre"
-                    placeholderTextColor="#666"
-                  />
-                </View>
-
-                <View style={styles.fieldRow}>
-                  <Text style={styles.label}>Apellido</Text>
-                  <TextInput
-                    value={apellido}
-                    onChangeText={setApellido}
-                    style={styles.input}
-                    placeholder="Apellido"
-                    placeholderTextColor="#666"
-                  />
-                </View>
-
-                <View style={styles.fieldRow}>
-                  <Text style={styles.label}>Correo</Text>
-                  <TextInput
-                    value={correo}
-                    onChangeText={setCorreo}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    style={styles.input}
-                    placeholder="Correo"
-                    placeholderTextColor="#666"
-                  />
-                </View>
-
-                <View style={styles.separator} />
-
-                <Text style={styles.label}>Cambiar contraseña (opcional)</Text>
-
-                <View style={styles.fieldRow}>
-                  <Text style={styles.mutedLabel}>Contraseña actual</Text>
-                  <TextInput
-                    value={currentPassword}
-                    onChangeText={setCurrentPassword}
-                    secureTextEntry
-                    style={styles.input}
-                    placeholder="••••••••"
-                    placeholderTextColor="#666"
-                  />
-                </View>
-
-                <View style={styles.fieldRow}>
-                  <Text style={styles.mutedLabel}>Nueva contraseña</Text>
-                  <TextInput
-                    value={newPassword}
-                    onChangeText={setNewPassword}
-                    secureTextEntry
-                    style={styles.input}
-                    placeholder="Mínimo 6 caracteres"
-                    placeholderTextColor="#666"
-                  />
-                </View>
-
-                <View style={styles.fieldRow}>
-                  <Text style={styles.mutedLabel}>
-                    Confirmar nueva contraseña
-                  </Text>
-                  <TextInput
-                    value={confirmPassword}
-                    onChangeText={setConfirmPassword}
-                    secureTextEntry
-                    style={styles.input}
-                    placeholder="Repite la nueva contraseña"
-                    placeholderTextColor="#666"
-                  />
-                </View>
-
-                <TaurosButton
-                  label={saving ? "Guardando..." : "Guardar datos personales"}
-                  onPress={savePersonalData}
-                  disabled={saving}
-                />
-              </TaurosCard>
-            </TaurosSection>
           ) : null}
+        </TaurosCard>
 
-          {showWeightForm ? (
-            <TaurosSection
-              title="Registrar peso"
-              subtitle="El peso se gestiona por separado para evitar cambios accidentales."
-            >
-              <TaurosCard style={styles.card}>
-                <View style={styles.fieldRow}>
-                  <Text style={styles.label}>Peso (kg)</Text>
-                  <TextInput
-                    value={weightInput}
-                    onChangeText={setWeightInput}
-                    keyboardType="decimal-pad"
-                    style={styles.input}
-                    placeholder="0.0"
-                    placeholderTextColor="#666"
-                  />
-                </View>
-
-                <TaurosButton
-                  label={saving ? "Registrando..." : "Guardar peso"}
-                  onPress={saveWeight}
-                  disabled={saving}
-                />
-              </TaurosCard>
-            </TaurosSection>
-          ) : null}
-
+        {showPersonalEdit ? (
           <TaurosSection
-            title="Información y condiciones"
-            subtitle="Términos de uso básicos"
+            title="Editar datos personales"
+            subtitle="Aquí no se cambia el peso."
           >
-            <TaurosCard>
-              <Text style={styles.termsText}>
-                Usa la app con responsabilidad. Los entrenamientos son
-                orientativos y no sustituyen una valoración profesional.
-              </Text>
-              <Pressable onPress={() => openLegalDocument(PRIVACY_URL)}>
-                <Text style={styles.legalLink}>Política de privacidad</Text>
-              </Pressable>
-              <Pressable onPress={() => openLegalDocument(TERMS_URL)}>
-                <Text style={styles.legalLink}>Términos de uso</Text>
-              </Pressable>
+            <TaurosCard style={styles.card}>
+              <View style={styles.fieldRow}>
+                <Text style={styles.label}>Nombre</Text>
+                <TextInput
+                  value={nombre}
+                  onChangeText={setNombre}
+                  style={styles.input}
+                  placeholder="Nombre"
+                  placeholderTextColor="#666"
+                />
+              </View>
+
+              <View style={styles.fieldRow}>
+                <Text style={styles.label}>Apellido</Text>
+                <TextInput
+                  value={apellido}
+                  onChangeText={setApellido}
+                  style={styles.input}
+                  placeholder="Apellido"
+                  placeholderTextColor="#666"
+                />
+              </View>
+
+              <View style={styles.fieldRow}>
+                <Text style={styles.label}>Correo</Text>
+                <TextInput
+                  value={correo}
+                  onChangeText={setCorreo}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  style={styles.input}
+                  placeholder="Correo"
+                  placeholderTextColor="#666"
+                />
+              </View>
+
+              <View style={styles.separator} />
+
+              <Text style={styles.label}>Cambiar contraseña (opcional)</Text>
+
+              <View style={styles.fieldRow}>
+                <Text style={styles.mutedLabel}>Contraseña actual</Text>
+                <TextInput
+                  value={currentPassword}
+                  onChangeText={setCurrentPassword}
+                  secureTextEntry
+                  style={styles.input}
+                  placeholder="••••••••"
+                  placeholderTextColor="#666"
+                />
+              </View>
+
+              <View style={styles.fieldRow}>
+                <Text style={styles.mutedLabel}>Nueva contraseña</Text>
+                <TextInput
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                  secureTextEntry
+                  style={styles.input}
+                  placeholder="Mínimo 6 caracteres"
+                  placeholderTextColor="#666"
+                />
+              </View>
+
+              <View style={styles.fieldRow}>
+                <Text style={styles.mutedLabel}>
+                  Confirmar nueva contraseña
+                </Text>
+                <TextInput
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  secureTextEntry
+                  style={styles.input}
+                  placeholder="Repite la nueva contraseña"
+                  placeholderTextColor="#666"
+                />
+              </View>
+
+              <TaurosButton
+                label={saving ? "Guardando..." : "Guardar datos personales"}
+                onPress={savePersonalData}
+                disabled={saving}
+              />
             </TaurosCard>
           </TaurosSection>
-        </ScrollView>
-      </KeyboardAvoidingView>
+        ) : null}
+
+        {showWeightForm ? (
+          <TaurosSection
+            title="Registrar peso"
+            subtitle="El peso se gestiona por separado para evitar cambios accidentales."
+          >
+            <TaurosCard style={styles.card}>
+              <View style={styles.fieldRow}>
+                <Text style={styles.label}>Peso (kg)</Text>
+                <TextInput
+                  value={weightInput}
+                  onChangeText={setWeightInput}
+                  keyboardType="decimal-pad"
+                  style={styles.input}
+                  placeholder="0.0"
+                  placeholderTextColor="#666"
+                />
+              </View>
+
+              <TaurosButton
+                label={saving ? "Registrando..." : "Guardar peso"}
+                onPress={saveWeight}
+                disabled={saving}
+              />
+            </TaurosCard>
+          </TaurosSection>
+        ) : null}
+
+        <TaurosSection
+          title="Información y condiciones"
+          subtitle="Términos de uso básicos"
+        >
+          <TaurosCard>
+            <Text style={styles.termsText}>
+              Usa la app con responsabilidad. Los entrenamientos son
+              orientativos y no sustituyen una valoración profesional.
+            </Text>
+            <Pressable onPress={() => openLegalDocument(PRIVACY_URL)}>
+              <Text style={styles.legalLink}>Política de privacidad</Text>
+            </Pressable>
+            <Pressable onPress={() => openLegalDocument(TERMS_URL)}>
+              <Text style={styles.legalLink}>Términos de uso</Text>
+            </Pressable>
+          </TaurosCard>
+        </TaurosSection>
+      </View>
     </TaurosScreen>
   );
 }

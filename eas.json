@@ -6,15 +6,24 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_TAUROS_API_URL": "https://tauros-backend.onrender.com"
+      }
     },
     "preview": {
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_TAUROS_API_URL": "https://tauros-backend.onrender.com"
       }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_TAUROS_API_URL": "https://tauros-backend.onrender.com"
+      }
     }
   },
   "submit": {
