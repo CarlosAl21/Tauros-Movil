@@ -1,10 +1,15 @@
 import { Image } from "expo-image";
 import { useFocusEffect, useRouter } from "expo-router";
+import {
+    openBrowserAsync,
+    WebBrowserPresentationStyle,
+} from "expo-web-browser";
 import { useCallback, useEffect, useState } from "react";
 import {
     Alert,
     KeyboardAvoidingView,
     Platform,
+    Pressable,
     ScrollView,
     StyleSheet,
     Text,
@@ -23,7 +28,21 @@ import {
     type BackendNutritionPlan,
     useTaurosBackend,
 } from "@/lib/tauros-backend";
+import { TAUROS_API_BASE_URL } from "@/lib/tauros-api";
 import { useTaurosSession } from "@/lib/tauros-session";
+
+const PRIVACY_URL = `${TAUROS_API_BASE_URL}/privacy`;
+const TERMS_URL = `${TAUROS_API_BASE_URL}/terms`;
+
+async function openLegalDocument(url: string) {
+  try {
+    await openBrowserAsync(url, {
+      presentationStyle: WebBrowserPresentationStyle.AUTOMATIC,
+    });
+  } catch (_error) {
+    Alert.alert("Enlace", "No se pudo abrir el documento.");
+  }
+}
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -34,6 +53,7 @@ export default function ProfileScreen() {
     logout,
     updateProfile,
     changePassword,
+    deleteAccount,
   } = useTaurosSession();
   const { nutritionPlans } = useTaurosBackend();
   const latestNutritionPlan = pickLatestNutritionPlan(nutritionPlans);
@@ -52,6 +72,7 @@ export default function ProfileScreen() {
   const [showPersonalEdit, setShowPersonalEdit] = useState(false);
   const [showWeightForm, setShowWeightForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const fullName =
     [user?.nombre, user?.apellido].filter(Boolean).join(" ") || "-";
 
@@ -157,6 +178,36 @@ export default function ProfileScreen() {
     }
   };
 
+  const runDeleteAccount = async () => {
+    try {
+      setDeleting(true);
+      await deleteAccount();
+      router.replace("/");
+    } catch (err) {
+      Alert.alert(
+        "Eliminar cuenta",
+        err instanceof Error ? err.message : "No se pudo eliminar la cuenta.",
+      );
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const confirmDeleteAccount = () => {
+    Alert.alert(
+      "Eliminar cuenta",
+      "Esta acción es irreversible: se eliminarán tus datos personales y perderás el acceso a tu cuenta. ¿Deseas continuar?",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Eliminar",
+          style: "destructive",
+          onPress: runDeleteAccount,
+        },
+      ],
+    );
+  };
+
   return (
     <TaurosScreen>
       <TaurosHeader
@@ -225,6 +276,15 @@ export default function ProfileScreen() {
                 await logout();
                 router.replace("/");
               }}
+            />
+
+            <TaurosButton
+              variant="ghost"
+              label={deleting ? "Eliminando..." : "Eliminar cuenta"}
+              disabled={deleting}
+              onPress={confirmDeleteAccount}
+              style={styles.dangerButton}
+              labelStyle={styles.dangerButtonLabel}
             />
 
             {latestNutritionPlan ? (
@@ -364,6 +424,12 @@ export default function ProfileScreen() {
                 Usa la app con responsabilidad. Los entrenamientos son
                 orientativos y no sustituyen una valoración profesional.
               </Text>
+              <Pressable onPress={() => openLegalDocument(PRIVACY_URL)}>
+                <Text style={styles.legalLink}>Política de privacidad</Text>
+              </Pressable>
+              <Pressable onPress={() => openLegalDocument(TERMS_URL)}>
+                <Text style={styles.legalLink}>Términos de uso</Text>
+              </Pressable>
             </TaurosCard>
           </TaurosSection>
         </ScrollView>
@@ -404,4 +470,16 @@ const styles = StyleSheet.create({
   },
   separator: { height: 1, backgroundColor: "#2f2f2f", marginVertical: 4 },
   termsText: { color: "#bdbdbd", lineHeight: 20 },
+  legalLink: {
+    color: "#f4ae1a",
+    fontWeight: "800",
+    marginTop: 10,
+    textDecorationLine: "underline",
+  },
+  dangerButton: {
+    borderColor: "#e5484d",
+  },
+  dangerButtonLabel: {
+    color: "#e5484d",
+  },
 });

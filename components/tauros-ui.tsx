@@ -6,9 +6,12 @@ import {
     Platform,
     Pressable,
     ScrollView,
+    StyleProp,
     StyleSheet,
     Text,
+    TextStyle,
     View,
+    ViewStyle,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -164,12 +167,16 @@ export function TaurosButton({
   variant = "primary",
   compact = false,
   disabled = false,
+  style,
+  labelStyle,
 }: {
   label: string;
   onPress?: () => void;
   variant?: "primary" | "secondary" | "ghost";
   compact?: boolean;
   disabled?: boolean;
+  style?: StyleProp<ViewStyle>;
+  labelStyle?: StyleProp<TextStyle>;
 }) {
   return (
     <Pressable
@@ -183,6 +190,7 @@ export function TaurosButton({
         compact ? styles.buttonCompact : undefined,
         disabled ? styles.buttonDisabled : undefined,
         pressed && !disabled ? styles.buttonPressed : undefined,
+        style,
       ]}
     >
       <Text
@@ -190,6 +198,7 @@ export function TaurosButton({
           styles.buttonLabel,
           variant === "secondary" ? styles.buttonLabelDark : undefined,
           variant === "ghost" ? styles.buttonLabelLight : undefined,
+          labelStyle,
         ]}
       >
         {label}

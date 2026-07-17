@@ -42,12 +42,19 @@ type TaurosSessionContextValue = {
   updateUser: (nextUser: Partial<TaurosAuthUser>) => Promise<void>;
   updateProfile: (payload: Partial<Pick<TaurosAuthUser, 'nombre' | 'apellido' | 'correo'>>) => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  deleteAccount: () => Promise<void>;
 };
 
 const TOKEN_KEY = 'tauros_mobile_token';
 const USER_KEY = 'tauros_mobile_user';
 const WEIGHT_KEY_PREFIX = 'tauros_mobile_weight';
 const EXERCISE_WEIGHTS_KEY_PREFIX = 'tauros_mobile_exercise_weights';
+// Personal offline caches (mirrors the raw keys used in app/(tabs)/planes.tsx
+// and hooks/useOfflineRoutine.ts) — cleared on account deletion, unlike the
+// generic exercise catalog and media cache which hold no personal data.
+const OFFLINE_PLANS_KEY = 'offline_plans_list';
+const OFFLINE_ROUTINE_KEY = 'offline_routines';
+const OFFLINE_ACTIONS_QUEUE_KEY = 'offline_actions_queue';
 
 const TaurosSessionContext = createContext<TaurosSessionContextValue | null>(null);
 
@@ -151,6 +158,35 @@ export function TaurosSessionProvider({ children }: { children: ReactNode }) {
     });
 
     await logout();
+  };
+
+  const deleteAccount = async () => {
+    if (!token) {
+      throw new Error('Debes iniciar sesion');
+    }
+
+    await taurosRequest('/auth/account', {
+      method: 'DELETE',
+      token,
+    });
+
+    const deletedUserId = user?.userId;
+
+    // The backend already anonymized the user's data and revoked their
+    // tokens. On the mobile side, treat this like a logout, plus wipe the
+    // locally cached data that is personal to this account (assigned
+    // routines, pending offline actions, weight history). The shared
+    // exercise catalog and downloaded demo videos are generic reference
+    // content, not personal data, so they're left alone.
+    await logout();
+
+    await Promise.all([
+      AsyncStorage.removeItem(OFFLINE_PLANS_KEY),
+      AsyncStorage.removeItem(OFFLINE_ROUTINE_KEY),
+      AsyncStorage.removeItem(OFFLINE_ACTIONS_QUEUE_KEY),
+      deletedUserId ? AsyncStorage.removeItem(getWeightKey(deletedUserId)) : Promise.resolve(),
+      deletedUserId ? AsyncStorage.removeItem(getExerciseWeightsKey(deletedUserId)) : Promise.resolve(),
+    ]);
   };
 
   const login = async (payload: TaurosLoginPayload) => {
@@ -270,6 +306,7 @@ export function TaurosSessionProvider({ children }: { children: ReactNode }) {
     updateUser,
     updateProfile,
     changePassword,
+    deleteAccount,
     getExerciseWeight,
     setExerciseWeight,
   }), [loadingSession, persistentWeight, token, user]);

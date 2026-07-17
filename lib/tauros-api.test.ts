@@ -144,4 +144,21 @@ describe('TaurosAPI - Llamadas HTTP a Backend', () => {
     const data = await response.json();
     expect(data.completada).toBe(true);
   });
+
+  it('Debe eliminar la cuenta del usuario correctamente', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      status: 204,
+      headers: { get: () => null },
+      text: async () => '',
+    });
+
+    const response = await fetch(`${mockApiUrl}/auth/account`, {
+      method: 'DELETE',
+      headers: { 'Authorization': 'Bearer token-123' },
+    });
+
+    expect(response.ok).toBe(true);
+    expect(response.status).toBe(204);
+  });
 });

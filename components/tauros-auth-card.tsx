@@ -1,5 +1,9 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import {
+    openBrowserAsync,
+    WebBrowserPresentationStyle,
+} from "expo-web-browser";
 import { useMemo, useState } from "react";
 import {
     Alert,
@@ -13,11 +17,25 @@ import {
 } from "react-native";
 
 import { TaurosButton, TaurosCard, TaurosPill } from "@/components/tauros-ui";
+import { TAUROS_API_BASE_URL } from "@/lib/tauros-api";
 import {
     TaurosLoginPayload,
     TaurosRegisterPayload,
     useTaurosSession,
 } from "@/lib/tauros-session";
+
+const PRIVACY_URL = `${TAUROS_API_BASE_URL}/privacy`;
+const TERMS_URL = `${TAUROS_API_BASE_URL}/terms`;
+
+async function openLegalDocument(url: string) {
+  try {
+    await openBrowserAsync(url, {
+      presentationStyle: WebBrowserPresentationStyle.AUTOMATIC,
+    });
+  } catch (_error) {
+    Alert.alert("Enlace", "No se pudo abrir el documento.");
+  }
+}
 
 const initialLogin: TaurosLoginPayload = { correo: "", password: "" };
 const initialRegister: TaurosRegisterPayload = {
@@ -250,6 +268,16 @@ export function TaurosAuthCard() {
                     responsabilidad y entiende que las rutinas y recomendaciones
                     son orientativas y no sustituyen una valoración profesional.
                   </Text>
+                  <Pressable onPress={() => openLegalDocument(TERMS_URL)}>
+                    <Text style={styles.termsModalLink}>
+                      Ver términos de uso completos
+                    </Text>
+                  </Pressable>
+                  <Pressable onPress={() => openLegalDocument(PRIVACY_URL)}>
+                    <Text style={styles.termsModalLink}>
+                      Ver política de privacidad
+                    </Text>
+                  </Pressable>
                   <Pressable
                     style={styles.termsCloseButton}
                     onPress={() => setShowTermsModal(false)}
@@ -449,6 +477,12 @@ const styles = StyleSheet.create({
   },
   termsModalTitle: { color: "#fff", fontSize: 17, fontWeight: "900" },
   termsModalText: { color: "#d0d0d0", lineHeight: 20, fontSize: 13 },
+  termsModalLink: {
+    color: "#f4ae1a",
+    fontSize: 13,
+    fontWeight: "800",
+    textDecorationLine: "underline",
+  },
   termsCloseButton: {
     alignSelf: "flex-end",
     paddingHorizontal: 14,
