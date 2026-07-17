@@ -852,7 +852,7 @@ function ExerciseVideo({ source }: { source: string }) {
       player={player}
       style={styles.video}
       nativeControls={false}
-      contentFit="contain"
+      contentFit="cover"
     />
   );
 }
@@ -949,7 +949,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     backgroundColor: "#0a0a0a",
   },
-  video: { width: "100%", height: 320, backgroundColor: "#000" },
+  video: { width: "100%", aspectRatio: 16 / 9, backgroundColor: "#000" },
   heroInfo: { gap: 12 },
   exerciseTitle: {
     color: "#fff",

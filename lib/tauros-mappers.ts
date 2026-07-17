@@ -13,6 +13,7 @@ import type {
     TaurosSchedule,
     TaurosSuggestion,
 } from "./tauros-data";
+import { normalizeVideoUrl } from "./cloudinary";
 
 const BACKUP_EXERCISES: TaurosExercise[] = [
   {
@@ -222,8 +223,8 @@ export function mapBackendExercise(
     categoria:
       exercise.categoria?.nombre ?? fallback?.categoria ?? meta.categoria,
     tipo: exercise.tipo?.nombre ?? fallback?.tipo ?? meta.tipo,
-    linkVideo: exercise.linkVideo,
-    linkAM: exercise.linkAM,
+    linkVideo: normalizeVideoUrl(exercise.linkVideo),
+    linkAM: normalizeVideoUrl(exercise.linkAM),
     tiempoSegundos: Number.isFinite(Number(exercise.tiempoSegundos))
       ? Number(exercise.tiempoSegundos)
       : null,
