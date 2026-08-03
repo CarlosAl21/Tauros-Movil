@@ -8,6 +8,7 @@ import { useMemo, useState } from "react";
 import {
     Alert,
     Modal,
+    Platform,
     Pressable,
     StyleSheet,
     Text,
@@ -146,6 +147,9 @@ export function TaurosAuthCard() {
               onChangeText={(value) =>
                 setRegisterForm((current) => ({ ...current, cedula: value }))
               }
+              autoComplete="off"
+              textContentType="none"
+              importantForAutofill="no"
             />
             <Field
               label="Nombre"
@@ -153,6 +157,8 @@ export function TaurosAuthCard() {
               onChangeText={(value) =>
                 setRegisterForm((current) => ({ ...current, nombre: value }))
               }
+              autoComplete="name-given"
+              textContentType="givenName"
             />
             <Field
               label="Apellido"
@@ -160,6 +166,8 @@ export function TaurosAuthCard() {
               onChangeText={(value) =>
                 setRegisterForm((current) => ({ ...current, apellido: value }))
               }
+              autoComplete="name-family"
+              textContentType="familyName"
             />
             <DateField
               label="Fecha de nacimiento"
@@ -173,6 +181,8 @@ export function TaurosAuthCard() {
                 setRegisterForm((current) => ({ ...current, correo: value }))
               }
               keyboardType="email-address"
+              autoComplete="email"
+              textContentType="emailAddress"
             />
             <Field
               label="Contraseña"
@@ -181,6 +191,8 @@ export function TaurosAuthCard() {
                 setRegisterForm((current) => ({ ...current, password: value }))
               }
               secureTextEntry
+              autoComplete="password-new"
+              textContentType="newPassword"
             />
             <Field
               label="Teléfono"
@@ -189,6 +201,8 @@ export function TaurosAuthCard() {
                 setRegisterForm((current) => ({ ...current, telefono: value }))
               }
               keyboardType="phone-pad"
+              autoComplete="tel"
+              textContentType="telephoneNumber"
             />
             <Pressable
               style={styles.termsRow}
@@ -210,43 +224,63 @@ export function TaurosAuthCard() {
                 </Pressable>
               </View>
             </Pressable>
-            <Modal
-              transparent
-              visible={showBirthDatePicker}
-              animationType="fade"
-              onRequestClose={() => setShowBirthDatePicker(false)}
-            >
-              <Pressable
-                style={styles.pickerBackdrop}
-                onPress={() => setShowBirthDatePicker(false)}
+            {Platform.OS === "android" ? (
+              showBirthDatePicker && (
+                <DateTimePicker
+                  value={selectedBirthDate}
+                  mode="date"
+                  display="calendar"
+                  maximumDate={new Date()}
+                  onChange={(event, date) => {
+                    setShowBirthDatePicker(false);
+                    if (event.type === "set" && date) {
+                      setRegisterForm((current) => ({
+                        ...current,
+                        fechaNacimiento: formatDateForInput(date),
+                      }));
+                    }
+                  }}
+                />
+              )
+            ) : (
+              <Modal
+                transparent
+                visible={showBirthDatePicker}
+                animationType="fade"
+                onRequestClose={() => setShowBirthDatePicker(false)}
               >
-                <Pressable style={styles.pickerCard} onPress={() => {}}>
-                  <Text style={styles.pickerTitle}>
-                    Selecciona tu fecha de nacimiento
-                  </Text>
-                  <DateTimePicker
-                    value={selectedBirthDate}
-                    mode="date"
-                    display="calendar"
-                    maximumDate={new Date()}
-                    onChange={(_event, date) => {
-                      if (date) {
-                        setRegisterForm((current) => ({
-                          ...current,
-                          fechaNacimiento: formatDateForInput(date),
-                        }));
-                      }
-                    }}
-                  />
-                  <Pressable
-                    style={styles.pickerDoneButton}
-                    onPress={() => setShowBirthDatePicker(false)}
-                  >
-                    <Text style={styles.pickerDoneText}>Listo</Text>
+                <Pressable
+                  style={styles.pickerBackdrop}
+                  onPress={() => setShowBirthDatePicker(false)}
+                >
+                  <Pressable style={styles.pickerCard} onPress={() => {}}>
+                    <Text style={styles.pickerTitle}>
+                      Selecciona tu fecha de nacimiento
+                    </Text>
+                    <DateTimePicker
+                      value={selectedBirthDate}
+                      mode="date"
+                      display="calendar"
+                      maximumDate={new Date()}
+                      onChange={(event, date) => {
+                        if (event.type === "set" && date) {
+                          setRegisterForm((current) => ({
+                            ...current,
+                            fechaNacimiento: formatDateForInput(date),
+                          }));
+                        }
+                      }}
+                    />
+                    <Pressable
+                      style={styles.pickerDoneButton}
+                      onPress={() => setShowBirthDatePicker(false)}
+                    >
+                      <Text style={styles.pickerDoneText}>Listo</Text>
+                    </Pressable>
                   </Pressable>
                 </Pressable>
-              </Pressable>
-            </Modal>
+              </Modal>
+            )}
             <Modal
               transparent
               visible={showTermsModal}
