@@ -42,3 +42,7 @@ app-example
 # generated native folders
 /ios
 /android
+
+# generated files
+eas.json
+app.json
