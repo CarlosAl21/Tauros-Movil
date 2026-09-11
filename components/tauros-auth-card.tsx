@@ -260,7 +260,7 @@ export function TaurosAuthCard() {
                     <DateTimePicker
                       value={selectedBirthDate}
                       mode="date"
-                      display="calendar"
+                      display="spinner"
                       maximumDate={new Date()}
                       onChange={(event, date) => {
                         if (event.type === "set" && date) {
