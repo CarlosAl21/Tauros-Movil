@@ -27,6 +27,12 @@
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "appleId": "carlosalvarado4101@gmail.com",
+        "ascAppId": "6810707923",
+        "appleTeamId": "FA3JP83H46"
+      }
+    }
   }
 }

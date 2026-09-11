@@ -5,13 +5,13 @@ describe("normalizeVideoUrl", () => {
     const input =
       "https://res.cloudinary.com/demo/video/upload/v123/tauros/ejercicios/video/abc.mp4";
     expect(normalizeVideoUrl(input)).toBe(
-      "https://res.cloudinary.com/demo/video/upload/c_fill,w_960,h_540/v123/tauros/ejercicios/video/abc.mp4",
+      "https://res.cloudinary.com/demo/video/upload/f_auto,q_auto,c_fill,w_960,h_540/v123/tauros/ejercicios/video/abc.mp4",
     );
   });
 
   it("no duplica la transformacion si la URL ya la tiene", () => {
     const input =
-      "https://res.cloudinary.com/demo/video/upload/c_fill,w_960,h_540/v123/abc.mp4";
+      "https://res.cloudinary.com/demo/video/upload/f_auto,q_auto,c_fill,w_960,h_540/v123/abc.mp4";
     expect(normalizeVideoUrl(input)).toBe(input);
   });
 

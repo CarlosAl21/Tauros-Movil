@@ -654,7 +654,10 @@ export default function ExerciseDetailScreen() {
       <TaurosCard style={styles.heroCard}>
         <View style={styles.heroVisualStack}>
           <View style={styles.heroVideoWrap}>
-            <ExerciseVideo source={displayExercise.linkVideo} />
+            <ExerciseVideo
+              source={displayExercise.linkVideo}
+              fallback={displayExercise.thumbnail}
+            />
           </View>
           <View style={styles.heroInfo}>
             <Text style={styles.exerciseTitle}>{displayExercise.nombre}</Text>
@@ -839,13 +842,37 @@ export default function ExerciseDetailScreen() {
   );
 }
 
-function ExerciseVideo({ source }: { source: string }) {
+function ExerciseVideo({
+  source,
+  fallback,
+}: {
+  source: string;
+  fallback?: string;
+}) {
+  const [hasError, setHasError] = useState(false);
   const player = useVideoPlayer(source, (videoPlayer) => {
     videoPlayer.loop = true;
     videoPlayer.muted = true;
     (videoPlayer as typeof videoPlayer & { volume?: number }).volume = 0;
     videoPlayer.play();
   });
+
+  useEffect(() => {
+    const subscription = player.addListener("statusChange", (payload) => {
+      if (payload.status === "error") {
+        console.warn("[ExerciseVideo] failed to load", source, payload.error);
+        setHasError(true);
+      }
+    });
+
+    return () => subscription.remove();
+  }, [player, source]);
+
+  if (hasError && fallback) {
+    return (
+      <Image source={{ uri: fallback }} style={styles.video} contentFit="cover" />
+    );
+  }
 
   return (
     <VideoViewComponent

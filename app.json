@@ -11,6 +11,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.taurosgym.movil",
+      "icon": "./assets/images/tauros-logo-ios.png",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }

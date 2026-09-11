@@ -1,7 +1,7 @@
 const VIDEO_UPLOAD_MARKER = "/video/upload/";
 // 16:9, recorte centrado (c_fill) para que todos los videos de ejercicios
 // midan lo mismo en la app, sin importar la proporcion con la que se subieron.
-const VIDEO_TRANSFORMATION = "c_fill,w_960,h_540";
+const VIDEO_TRANSFORMATION = "f_auto,q_auto,c_fill,w_960,h_540";
 
 function isCloudinaryVideoUrl(parsed: URL): boolean {
   return (

@@ -3,6 +3,7 @@ import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { VideoView, useVideoPlayer } from "expo-video";
 import type { ComponentType } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { TaurosAuthCard } from "@/components/tauros-auth-card";
@@ -147,14 +148,32 @@ function PausedVideoPreview({
     );
   }
 
-  return <VideoPreview source={source} />;
+  return <VideoPreview source={source} fallback={fallback} />;
 }
 
-function VideoPreview({ source }: { source: string }) {
+function VideoPreview({ source, fallback }: { source: string; fallback: string }) {
+  const [hasError, setHasError] = useState(false);
   const player = useVideoPlayer(source, (videoPlayer) => {
     videoPlayer.muted = true;
     videoPlayer.pause();
   });
+
+  useEffect(() => {
+    const subscription = player.addListener("statusChange", (payload) => {
+      if (payload.status === "error") {
+        console.warn("[VideoPreview] failed to load", source, payload.error);
+        setHasError(true);
+      }
+    });
+
+    return () => subscription.remove();
+  }, [player, source]);
+
+  if (hasError) {
+    return (
+      <Image source={{ uri: fallback }} style={styles.thumbnail} contentFit="cover" />
+    );
+  }
 
   return (
     <View style={styles.previewWrap}>
