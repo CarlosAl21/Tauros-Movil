@@ -97,7 +97,11 @@ export async function taurosRequest<T>(path: string, options: RequestOptions = {
   let response = await executeRequest(path, options);
 
   // On 401, attempt a single token refresh then retry the original request.
-  if (response.status === 401 && !options._isRetry) {
+  // Only applies to requests that were actually carrying a token — an
+  // unauthenticated call like /auth/login returning 401 means invalid
+  // credentials, not an expired session, and should surface the backend's
+  // own message instead of being reinterpreted as "session expired".
+  if (response.status === 401 && !options._isRetry && options.token) {
     const newToken = await attemptTokenRefresh();
 
     if (newToken) {

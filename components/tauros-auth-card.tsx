@@ -261,6 +261,7 @@ export function TaurosAuthCard() {
                       value={selectedBirthDate}
                       mode="date"
                       display="spinner"
+                      themeVariant="dark"
                       maximumDate={new Date()}
                       onChange={(event, date) => {
                         if (event.type === "set" && date) {
