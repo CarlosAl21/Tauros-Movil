@@ -18,13 +18,13 @@ export type TaurosLoginPayload = {
 };
 
 export type TaurosRegisterPayload = {
-  cedula: string;
+  cedula?: string;
   nombre: string;
   apellido: string;
-  fechaNacimiento: string;
+  fechaNacimiento?: string;
   correo: string;
   password: string;
-  telefono: string;
+  telefono?: string;
 };
 
 type TaurosSessionContextValue = {
@@ -199,9 +199,19 @@ export function TaurosSessionProvider({ children }: { children: ReactNode }) {
   };
 
   const register = async (payload: TaurosRegisterPayload) => {
+    // cedula/fechaNacimiento/telefono son opcionales (guideline 5.1.1(v) de
+    // Apple). El formulario los inicializa como "", asi que se normalizan a
+    // undefined aca para que el backend los reciba como realmente ausentes.
+    const normalizedPayload: TaurosRegisterPayload = {
+      ...payload,
+      cedula: payload.cedula?.trim() || undefined,
+      fechaNacimiento: payload.fechaNacimiento?.trim() || undefined,
+      telefono: payload.telefono?.trim() || undefined,
+    };
+
     const response = await taurosRequest<{ access_token: string; refresh_token: string; user: TaurosAuthUser }>('/auth/register', {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: JSON.stringify(normalizedPayload),
     });
 
     await persistAuth(response.access_token, response.user, response.refresh_token);

@@ -75,13 +75,10 @@ export function TaurosAuthCard() {
       }
 
       if (
-        !registerForm.cedula ||
         !registerForm.nombre ||
         !registerForm.apellido ||
-        !registerForm.fechaNacimiento ||
         !registerForm.correo ||
-        !registerForm.password ||
-        !registerForm.telefono
+        !registerForm.password
       ) {
         throw new Error("Completa todos los campos del registro");
       }
@@ -142,7 +139,7 @@ export function TaurosAuthCard() {
         ) : (
           <>
             <Field
-              label="Cédula"
+              label="Cédula (opcional)"
               value={registerForm.cedula}
               onChangeText={(value) =>
                 setRegisterForm((current) => ({ ...current, cedula: value }))
@@ -170,7 +167,7 @@ export function TaurosAuthCard() {
               textContentType="familyName"
             />
             <DateField
-              label="Fecha de nacimiento"
+              label="Fecha de nacimiento (opcional)"
               value={registerForm.fechaNacimiento}
               onPress={() => setShowBirthDatePicker(true)}
             />
@@ -195,7 +192,7 @@ export function TaurosAuthCard() {
               textContentType="newPassword"
             />
             <Field
-              label="Teléfono"
+              label="Teléfono (opcional)"
               value={registerForm.telefono}
               onChangeText={(value) =>
                 setRegisterForm((current) => ({ ...current, telefono: value }))
@@ -376,7 +373,7 @@ function DateField({
   onPress,
 }: {
   label: string;
-  value: string;
+  value?: string;
   onPress: () => void;
 }) {
   return (
@@ -401,7 +398,7 @@ function DateField({
   );
 }
 
-function parseDateString(value: string) {
+function parseDateString(value?: string) {
   if (!value) {
     return null;
   }
