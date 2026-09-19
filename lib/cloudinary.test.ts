@@ -1,18 +1,26 @@
 import { normalizeVideoUrl } from "./cloudinary";
 
 describe("normalizeVideoUrl", () => {
-  it("inserta la transformacion de tamaño en una URL de video de Cloudinary", () => {
+  it("inserta una transformacion que no recorta en una URL de video de Cloudinary", () => {
     const input =
       "https://res.cloudinary.com/demo/video/upload/v123/tauros/ejercicios/video/abc.mp4";
     expect(normalizeVideoUrl(input)).toBe(
-      "https://res.cloudinary.com/demo/video/upload/f_auto,q_auto,c_fill,w_960,h_540/v123/tauros/ejercicios/video/abc.mp4",
+      "https://res.cloudinary.com/demo/video/upload/f_auto,q_auto,c_limit,w_720,h_720/v123/tauros/ejercicios/video/abc.mp4",
     );
   });
 
   it("no duplica la transformacion si la URL ya la tiene", () => {
     const input =
-      "https://res.cloudinary.com/demo/video/upload/f_auto,q_auto,c_fill,w_960,h_540/v123/abc.mp4";
+      "https://res.cloudinary.com/demo/video/upload/f_auto,q_auto,c_limit,w_720,h_720/v123/abc.mp4";
     expect(normalizeVideoUrl(input)).toBe(input);
+  });
+
+  it("reemplaza la transformacion antigua c_fill 16:9 que recortaba el video", () => {
+    const input =
+      "https://res.cloudinary.com/demo/video/upload/f_auto,q_auto,c_fill,w_960,h_540/v123/abc.mp4";
+    expect(normalizeVideoUrl(input)).toBe(
+      "https://res.cloudinary.com/demo/video/upload/f_auto,q_auto,c_limit,w_720,h_720/v123/abc.mp4",
+    );
   });
 
   it("deja intacta una URL que no es de Cloudinary video/upload", () => {

@@ -1,7 +1,13 @@
 const VIDEO_UPLOAD_MARKER = "/video/upload/";
-// 16:9, recorte centrado (c_fill) para que todos los videos de ejercicios
-// midan lo mismo en la app, sin importar la proporcion con la que se subieron.
-const VIDEO_TRANSFORMATION = "f_auto,q_auto,c_fill,w_960,h_540";
+
+// Every exercise clip in the dataset is a square 180x180 (1:1) file. The
+// transformation must never crop it: `c_limit` only downsizes (never upscales,
+// never crops) and keeps the original aspect ratio.
+export const EXERCISE_MEDIA_ASPECT_RATIO = 1;
+const VIDEO_TRANSFORMATION = "f_auto,q_auto,c_limit,w_720,h_720";
+// Older builds forced a 16:9 `c_fill` crop that cut the figure. Strip it if a
+// stored URL still carries it so the media is served uncropped.
+const LEGACY_TRANSFORMATION_PATTERN = /(?:f_auto,q_auto,)?c_fill,w_960,h_540\//;
 
 function isCloudinaryVideoUrl(parsed: URL): boolean {
   return (
@@ -26,11 +32,13 @@ export function normalizeVideoUrl(url?: string | null): string {
     return url;
   }
 
-  if (parsed.pathname.includes(`${VIDEO_UPLOAD_MARKER}${VIDEO_TRANSFORMATION}/`)) {
-    return url;
+  const cleanUrl = url.replace(LEGACY_TRANSFORMATION_PATTERN, "");
+
+  if (cleanUrl.includes(`${VIDEO_UPLOAD_MARKER}${VIDEO_TRANSFORMATION}/`)) {
+    return cleanUrl;
   }
 
-  return url.replace(
+  return cleanUrl.replace(
     VIDEO_UPLOAD_MARKER,
     `${VIDEO_UPLOAD_MARKER}${VIDEO_TRANSFORMATION}/`,
   );

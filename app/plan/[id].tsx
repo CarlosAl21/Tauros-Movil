@@ -23,10 +23,14 @@ import {
 } from "@/lib/tauros-mappers";
 import { useTaurosSession } from "@/lib/tauros-session";
 import { useOfflineRoutine } from "@/hooks/useOfflineRoutine";
+import { useSafeBack } from "@/hooks/use-safe-back";
 import { TaurosSuggestionForm } from "../../components/tauros-suggestion-form";
 
 export default function PlanDetailScreen() {
   const router = useRouter();
+  // Back returns to where the user came from (routines list, or the exercise
+  // list that opened it); only a deep link falls back to the routines tab.
+  const goBack = useSafeBack("/planes");
   const params = useLocalSearchParams<{ id?: string; day?: string }>();
   const planId = Array.isArray(params.id) ? params.id[0] : params.id;
   const dayId = Array.isArray(params.day) ? params.day[0] : params.day;
@@ -68,7 +72,7 @@ export default function PlanDetailScreen() {
   if (!token) {
     return (
       <TaurosScreen>
-        <TaurosHeader title="Plan" onBack={() => router.replace("/planes")} />
+        <TaurosHeader title="Plan" onBack={goBack} />
         <TaurosAuthCard />
       </TaurosScreen>
     );
@@ -101,7 +105,7 @@ export default function PlanDetailScreen() {
       <TaurosScreen>
         <TaurosHeader
           title="Plan no encontrado"
-          onBack={() => router.replace("/planes")}
+          onBack={goBack}
         />
         <TaurosCard>
           <Text style={styles.emptyText}>
@@ -181,7 +185,7 @@ export default function PlanDetailScreen() {
             ? `Día ${selectedDay.numeroDia} · ${selectedDay.nombre}`
             : plan.objetivo
         }
-        onBack={() => router.replace("/planes")}
+        onBack={goBack}
         right={
           <TaurosPill
             label={
@@ -402,7 +406,12 @@ export default function PlanDetailScreen() {
           <TaurosButton
             label="Ver todos los días"
             onPress={() =>
-              router.push({ pathname: "/plan/[id]", params: { id: plan.id } })
+              // Replace the day view with the full plan so back still goes
+              // straight to the routines list instead of stacking duplicates.
+              router.replace({
+                pathname: "/plan/[id]",
+                params: { id: plan.id },
+              })
             }
           />
         </TaurosSection>

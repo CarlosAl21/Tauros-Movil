@@ -1,16 +1,12 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import Constants from "expo-constants";
 import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { VideoView, useVideoPlayer } from "expo-video";
-import type { ComponentType } from "react";
 import { useEffect, useRef, useState } from "react";
 import {
     Alert,
     AppState,
     type AppStateStatus,
-    Platform,
     StyleSheet,
     Text,
     TextInput,
@@ -18,6 +14,7 @@ import {
     View,
 } from "react-native";
 
+import { ExerciseMedia } from "@/components/exercise-media";
 import { TaurosAuthCard } from "@/components/tauros-auth-card";
 import {
     TaurosButton,
@@ -27,6 +24,14 @@ import {
     TaurosScreen,
     TaurosSection,
 } from "@/components/tauros-ui";
+import { useSafeBack } from "@/hooks/use-safe-back";
+import {
+    cancelRestNotification,
+    ensureNotificationsReady,
+    notifyNow,
+    playRestFinishedAlert,
+    scheduleRestNotification,
+} from "@/lib/rest-notifications";
 import { useTaurosBackend } from "@/lib/tauros-backend";
 import type { BackendExercise, BackendPlan } from "@/lib/tauros-backend";
 import {
@@ -37,13 +42,6 @@ import {
 } from "@/lib/tauros-mappers";
 import { useTaurosSession } from "@/lib/tauros-session";
 import { TaurosSuggestionForm } from "../../components/tauros-suggestion-form";
-
-const VideoViewComponent = VideoView as unknown as ComponentType<{
-  player: ReturnType<typeof useVideoPlayer>;
-  style: object;
-  nativeControls?: boolean;
-  contentFit?: "cover" | "contain" | "fill" | "none" | "scale-down";
-}>;
 
 export default function ExerciseDetailScreen() {
   const router = useRouter();
@@ -62,6 +60,17 @@ export default function ExerciseDetailScreen() {
   const routineId = Array.isArray(params.routineId)
     ? params.routineId[0]
     : params.routineId;
+
+  // Logical parent when there is no history (deep link / cold start): the
+  // routine day the exercise belongs to, or the exercise catalog otherwise.
+  const goBack = useSafeBack(
+    planId
+      ? {
+          pathname: "/plan/[id]",
+          params: dayId ? { id: planId, day: dayId } : { id: planId },
+        }
+      : "/ejercicios",
+  );
 
   const { token, user, getExerciseWeight, setExerciseWeight } =
     useTaurosSession();
@@ -95,9 +104,6 @@ export default function ExerciseDetailScreen() {
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   const restWentBackgroundRef = useRef(false);
   const warmupWentBackgroundRef = useRef(false);
-  const notificationsReadyRef = useRef(false);
-  const restNotificationIdRef = useRef<string | null>(null);
-  const warmupRestNotificationIdRef = useRef<string | null>(null);
   const [screenNotice, setScreenNotice] = useState<{
     title: string;
     body: string;
@@ -249,15 +255,28 @@ export default function ExerciseDetailScreen() {
         }
 
         if (wasInactive && restEndsAt !== null) {
-          setRestSecondsLeft(
-            Math.max(0, Math.ceil((restEndsAt - Date.now()) / 1000)),
+          const remaining = Math.max(
+            0,
+            Math.ceil((restEndsAt - Date.now()) / 1000),
           );
+          setRestSecondsLeft(remaining);
+          // Back in the app with time left: the alert must be in-app again.
+          // Only a rest that finished while away was already announced by the
+          // system notification.
+          if (remaining > 0) {
+            restWentBackgroundRef.current = false;
+          }
         }
 
         if (wasInactive && warmupRestEndsAt !== null) {
-          setWarmupRestSecondsLeft(
-            Math.max(0, Math.ceil((warmupRestEndsAt - Date.now()) / 1000)),
+          const remaining = Math.max(
+            0,
+            Math.ceil((warmupRestEndsAt - Date.now()) / 1000),
           );
+          setWarmupRestSecondsLeft(remaining);
+          if (remaining > 0) {
+            warmupWentBackgroundRef.current = false;
+          }
         }
       },
     );
@@ -267,9 +286,9 @@ export default function ExerciseDetailScreen() {
 
   useEffect(() => {
     if (previousRestSecondsRef.current > 0 && restSecondsLeft === 0) {
-      void cancelScheduledNotification(restNotificationIdRef);
+      void cancelRestNotification("interval");
       if (!restWentBackgroundRef.current) {
-        showScreenNotice(restEndTitle, restEndBody, "accent");
+        showRestFinished(restEndTitle, restEndBody, "accent");
       }
       restWentBackgroundRef.current = false;
     }
@@ -282,9 +301,9 @@ export default function ExerciseDetailScreen() {
       previousWarmupRestSecondsRef.current > 0 &&
       warmupRestSecondsLeft === 0
     ) {
-      void cancelScheduledNotification(warmupRestNotificationIdRef);
+      void cancelRestNotification("warmup");
       if (!warmupWentBackgroundRef.current) {
-        showScreenNotice(warmupRestEndTitle, warmupRestEndBody, "success");
+        showRestFinished(warmupRestEndTitle, warmupRestEndBody, "success");
       }
       warmupWentBackgroundRef.current = false;
     }
@@ -296,16 +315,28 @@ export default function ExerciseDetailScreen() {
     setCompletedWarmups(0);
     setWarmupRestSecondsLeft(0);
     setWarmupRestEndsAt(null);
-    void cancelScheduledNotification(warmupRestNotificationIdRef);
+    void cancelRestNotification("warmup");
     warmupWentBackgroundRef.current = false;
     previousWarmupRestSecondsRef.current = 0;
     setCompletedIntervals(0);
     setRestSecondsLeft(0);
     setRestEndsAt(null);
-    void cancelScheduledNotification(restNotificationIdRef);
+    void cancelRestNotification("interval");
     restWentBackgroundRef.current = false;
     previousRestSecondsRef.current = 0;
   }, [activeRoutineId, exerciseId]);
+
+  useEffect(() => {
+    // Ask for notification permission (and create the Android channel) as soon
+    // as the user reaches an exercise, not when the first rest ends.
+    void ensureNotificationsReady();
+
+    // Leaving the exercise must never leave a rest alert pending.
+    return () => {
+      void cancelRestNotification("interval");
+      void cancelRestNotification("warmup");
+    };
+  }, []);
 
   useEffect(() => {
     if (!screenNotice) {
@@ -341,16 +372,34 @@ export default function ExerciseDetailScreen() {
       return;
     }
 
+    const endsAt = Date.now() + restDuration * 1000;
     setCompletedIntervals((current) => current + 1);
     restWentBackgroundRef.current = false;
-    setRestEndsAt(Date.now() + restDuration * 1000);
+    setRestEndsAt(endsAt);
     setRestSecondsLeft(restDuration);
-    void scheduleRestNotification(
-      restNotificationIdRef,
-      restEndTitle,
-      restEndBody,
-      restDuration,
-    );
+    void scheduleRestNotification({
+      kind: "interval",
+      title: restEndTitle,
+      body: restEndBody,
+      endsAt,
+    });
+  };
+
+  const onSkipRest = () => {
+    // Zeroing the previous value first keeps the "rest finished" alert quiet.
+    previousRestSecondsRef.current = 0;
+    restWentBackgroundRef.current = false;
+    setRestEndsAt(null);
+    setRestSecondsLeft(0);
+    void cancelRestNotification("interval");
+  };
+
+  const onSkipWarmupRest = () => {
+    previousWarmupRestSecondsRef.current = 0;
+    warmupWentBackgroundRef.current = false;
+    setWarmupRestEndsAt(null);
+    setWarmupRestSecondsLeft(0);
+    void cancelRestNotification("warmup");
   };
 
   const onCompleteWarmup = () => {
@@ -358,16 +407,17 @@ export default function ExerciseDetailScreen() {
       return;
     }
 
+    const endsAt = Date.now() + restDuration * 1000;
     setCompletedWarmups((current) => current + 1);
     warmupWentBackgroundRef.current = false;
-    setWarmupRestEndsAt(Date.now() + restDuration * 1000);
+    setWarmupRestEndsAt(endsAt);
     setWarmupRestSecondsLeft(restDuration);
-    void scheduleRestNotification(
-      warmupRestNotificationIdRef,
-      warmupRestEndTitle,
-      warmupRestEndBody,
-      restDuration,
-    );
+    void scheduleRestNotification({
+      kind: "warmup",
+      title: warmupRestEndTitle,
+      body: warmupRestEndBody,
+      endsAt,
+    });
   };
 
   const onCompleteExercise = async () => {
@@ -392,7 +442,10 @@ export default function ExerciseDetailScreen() {
       setCompleted(nowCompleted);
 
       if (nowCompleted) {
-        void notifyWithSoundAndVibration(
+        // Exercise is done: no rest alert should ring afterwards.
+        onSkipRest();
+        onSkipWarmupRest();
+        void notifyExerciseCompleted(
           "Ejercicio completado",
           "La carga quedó guardada para tu próximo ingreso.",
         );
@@ -409,7 +462,10 @@ export default function ExerciseDetailScreen() {
         currentIndex >= 0 ? targetDay.ejercicios[currentIndex + 1] : undefined;
 
       if (nextExercise) {
-        router.push({
+        // Replace (not push) so back from the next exercise returns to the
+        // list the user came from instead of walking back through every
+        // exercise that was just completed.
+        router.replace({
           pathname: "/ejercicio/[id]",
           params: {
             id: nextExercise.exerciseId,
@@ -421,96 +477,20 @@ export default function ExerciseDetailScreen() {
         return;
       }
 
+      if (planId) {
+        // Came from a routine: return to it (with the day now completed).
+        goBack();
+        return;
+      }
+
       if (activePlan?.id) {
-        router.push({ pathname: "/plan/[id]", params: { id: activePlan.id } });
+        router.replace({
+          pathname: "/plan/[id]",
+          params: { id: activePlan.id },
+        });
       }
     } finally {
       setCompleting(false);
-    }
-  };
-
-  const scheduleRestNotification = async (
-    notificationIdRef: { current: string | null },
-    title: string,
-    body: string,
-    durationSeconds: number,
-  ) => {
-    const isExpoGo =
-      Constants.appOwnership === "expo" ||
-      Constants.executionEnvironment === "storeClient";
-    if (isExpoGo || durationSeconds <= 0) {
-      return;
-    }
-
-    try {
-      const Notifications = await import("expo-notifications");
-
-      if (!notificationsReadyRef.current) {
-        const permissions = await Notifications.getPermissionsAsync();
-        if (permissions.status !== "granted") {
-          const requested = await Notifications.requestPermissionsAsync();
-          if (requested.status !== "granted") {
-            return;
-          }
-        }
-
-        if (Platform.OS === "android") {
-          await Notifications.setNotificationChannelAsync(
-            "tauros-rest-reminder",
-            {
-              name: "Recordatorio de descanso",
-              importance: Notifications.AndroidImportance.MAX,
-              vibrationPattern: [0, 250, 150, 250],
-              sound: "default",
-              lockscreenVisibility:
-                Notifications.AndroidNotificationVisibility.PUBLIC,
-            },
-          );
-        }
-
-        notificationsReadyRef.current = true;
-      }
-
-      if (notificationIdRef.current) {
-        await Notifications.cancelScheduledNotificationAsync(
-          notificationIdRef.current,
-        );
-      }
-
-      const notificationId = await Notifications.scheduleNotificationAsync({
-        content: {
-          title,
-          body,
-          sound: "default",
-        },
-        trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.DATE,
-          date: new Date(Date.now() + durationSeconds * 1000),
-        },
-      });
-
-      notificationIdRef.current = notificationId;
-    } catch (_error) {
-      return;
-    }
-  };
-
-  const cancelScheduledNotification = async (notificationIdRef: {
-    current: string | null;
-  }) => {
-    if (!notificationIdRef.current) {
-      return;
-    }
-
-    try {
-      const Notifications = await import("expo-notifications");
-      await Notifications.cancelScheduledNotificationAsync(
-        notificationIdRef.current,
-      );
-    } catch (_error) {
-      // Ignore cancellation failures when the notification already fired.
-    } finally {
-      notificationIdRef.current = null;
     }
   };
 
@@ -519,62 +499,25 @@ export default function ExerciseDetailScreen() {
     body: string,
     tone: "accent" | "success",
   ) => {
-    Vibration.vibrate([0, 180, 80, 180]);
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setScreenNotice({ title, body, tone });
   };
 
-  const notifyWithSoundAndVibration = async (title: string, body: string) => {
+  // Foreground alert when a rest timer reaches zero: card + loud sound + haptics.
+  const showRestFinished = (
+    title: string,
+    body: string,
+    tone: "accent" | "success",
+  ) => {
+    playRestFinishedAlert();
+    showScreenNotice(title, body, tone);
+  };
+
+  const notifyExerciseCompleted = async (title: string, body: string) => {
     Vibration.vibrate([0, 250, 150, 250]);
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-    const isExpoGo =
-      Constants.appOwnership === "expo" ||
-      Constants.executionEnvironment === "storeClient";
-    if (isExpoGo) {
-      Alert.alert(title, body);
-      return;
-    }
-
-    try {
-      const Notifications = await import("expo-notifications");
-
-      if (!notificationsReadyRef.current) {
-        const permissions = await Notifications.getPermissionsAsync();
-        if (permissions.status !== "granted") {
-          const requested = await Notifications.requestPermissionsAsync();
-          if (requested.status !== "granted") {
-            Alert.alert(title, body);
-            return;
-          }
-        }
-
-        if (Platform.OS === "android") {
-          await Notifications.setNotificationChannelAsync(
-            "tauros-rest-reminder",
-            {
-              name: "Recordatorio de descanso",
-              importance: Notifications.AndroidImportance.MAX,
-              vibrationPattern: [0, 250, 150, 250],
-              sound: "default",
-              lockscreenVisibility:
-                Notifications.AndroidNotificationVisibility.PUBLIC,
-            },
-          );
-        }
-
-        notificationsReadyRef.current = true;
-      }
-
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title,
-          body,
-          sound: "default",
-        },
-        trigger: null,
-      });
-    } catch (_error) {
+    const delivered = await notifyNow(title, body);
+    if (!delivered) {
       Alert.alert(title, body);
     }
   };
@@ -582,7 +525,7 @@ export default function ExerciseDetailScreen() {
   if (!token) {
     return (
       <TaurosScreen>
-        <TaurosHeader title="Ejercicio" onBack={() => router.back()} />
+        <TaurosHeader title="Ejercicio" onBack={goBack} />
         <TaurosAuthCard />
       </TaurosScreen>
     );
@@ -593,7 +536,7 @@ export default function ExerciseDetailScreen() {
       <TaurosScreen>
         <TaurosHeader
           title="Ejercicio no encontrado"
-          onBack={() => router.back()}
+          onBack={goBack}
         />
         <TaurosCard>
           <Text style={styles.emptyText}>
@@ -609,19 +552,7 @@ export default function ExerciseDetailScreen() {
       <TaurosHeader
         title={displayExercise.nombre}
         subtitle={`${displayExercise.categoria} · ${displayExercise.tipo}`}
-        onBack={() => {
-          const destPlanId = planId || activePlan?.id;
-          const destDayId = dayId || targetDay?.id;
-          if (destPlanId && destDayId) {
-            router.push({
-              pathname: "/plan/[id]",
-              params: { id: destPlanId, day: destDayId },
-            });
-            return;
-          }
-
-          router.back();
-        }}
+        onBack={goBack}
         right={
           <TaurosPill
             label={completed ? "Hecho" : "Pendiente"}
@@ -653,12 +584,11 @@ export default function ExerciseDetailScreen() {
 
       <TaurosCard style={styles.heroCard}>
         <View style={styles.heroVisualStack}>
-          <View style={styles.heroVideoWrap}>
-            <ExerciseVideo
-              source={displayExercise.linkVideo}
-              fallback={displayExercise.thumbnail}
-            />
-          </View>
+          <ExerciseMedia
+            source={displayExercise.linkVideo}
+            fallback={displayExercise.thumbnail}
+            autoPlay
+          />
           <View style={styles.heroInfo}>
             <Text style={styles.exerciseTitle}>{displayExercise.nombre}</Text>
             <Text style={styles.exerciseMeta}>
@@ -719,6 +649,15 @@ export default function ExerciseDetailScreen() {
                   {formatSeconds(warmupRestSecondsLeft)}
                 </Text>
               </View>
+
+              {warmupRestSecondsLeft > 0 ? (
+                <TaurosButton
+                  compact
+                  variant="ghost"
+                  label="Saltar descanso"
+                  onPress={onSkipWarmupRest}
+                />
+              ) : null}
 
               <TaurosButton
                 compact
@@ -790,6 +729,15 @@ export default function ExerciseDetailScreen() {
               </Text>
             </View>
 
+            {restSecondsLeft > 0 ? (
+              <TaurosButton
+                compact
+                variant="ghost"
+                label="Saltar descanso"
+                onPress={onSkipRest}
+              />
+            ) : null}
+
             <TaurosButton
               compact
               label={
@@ -839,48 +787,6 @@ export default function ExerciseDetailScreen() {
         />
       </TaurosSection>
     </TaurosScreen>
-  );
-}
-
-function ExerciseVideo({
-  source,
-  fallback,
-}: {
-  source: string;
-  fallback?: string;
-}) {
-  const [hasError, setHasError] = useState(false);
-  const player = useVideoPlayer(source, (videoPlayer) => {
-    videoPlayer.loop = true;
-    videoPlayer.muted = true;
-    (videoPlayer as typeof videoPlayer & { volume?: number }).volume = 0;
-    videoPlayer.play();
-  });
-
-  useEffect(() => {
-    const subscription = player.addListener("statusChange", (payload) => {
-      if (payload.status === "error") {
-        console.warn("[ExerciseVideo] failed to load", source, payload.error);
-        setHasError(true);
-      }
-    });
-
-    return () => subscription.remove();
-  }, [player, source]);
-
-  if (hasError && fallback) {
-    return (
-      <Image source={{ uri: fallback }} style={styles.video} contentFit="cover" />
-    );
-  }
-
-  return (
-    <VideoViewComponent
-      player={player}
-      style={styles.video}
-      nativeControls={false}
-      contentFit="cover"
-    />
   );
 }
 
@@ -970,13 +876,6 @@ const styles = StyleSheet.create({
   emptyText: { color: "#fff", fontWeight: "700" },
   heroCard: { gap: 14 },
   heroVisualStack: { gap: 14 },
-  heroVideoWrap: {
-    width: "100%",
-    borderRadius: 20,
-    overflow: "hidden",
-    backgroundColor: "#0a0a0a",
-  },
-  video: { width: "100%", aspectRatio: 16 / 9, backgroundColor: "#000" },
   heroInfo: { gap: 12 },
   exerciseTitle: {
     color: "#fff",

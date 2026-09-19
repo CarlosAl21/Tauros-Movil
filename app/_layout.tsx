@@ -3,30 +3,20 @@ import {
     DefaultTheme,
     ThemeProvider,
 } from "@react-navigation/native";
-import * as Notifications from "expo-notifications";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { Platform } from "react-native";
 import "react-native-reanimated";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import { configureNotificationHandler } from "@/lib/rest-notifications";
 import { TaurosSessionProvider } from "@/lib/tauros-session";
 
 export const unstable_settings = {
   anchor: "(tabs)",
 };
 
-if (Platform.OS !== "web") {
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowBanner: true,
-      shouldShowList: true,
-      shouldPlaySound: true,
-      shouldSetBadge: false,
-    }),
-  });
-}
+configureNotificationHandler();
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();

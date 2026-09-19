@@ -1,11 +1,8 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import { VideoView, useVideoPlayer } from "expo-video";
-import type { ComponentType } from "react";
-import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { ExerciseMedia } from "@/components/exercise-media";
 import { TaurosAuthCard } from "@/components/tauros-auth-card";
 import {
     TaurosCard,
@@ -16,13 +13,6 @@ import {
 import { useTaurosBackend } from "@/lib/tauros-backend";
 import { mapBackendExercises } from "@/lib/tauros-mappers";
 import { useTaurosSession } from "@/lib/tauros-session";
-
-const VideoViewComponent = VideoView as unknown as ComponentType<{
-  player: ReturnType<typeof useVideoPlayer>;
-  style: object;
-  nativeControls?: boolean;
-  contentFit?: "cover" | "contain" | "fill" | "none" | "scale-down";
-}>;
 
 export default function ExercisesScreen() {
   const router = useRouter();
@@ -63,9 +53,10 @@ export default function ExercisesScreen() {
             }
           >
             <TaurosCard style={styles.exerciseCard}>
-              <PausedVideoPreview
+              <ExerciseMedia
                 source={exercise.linkVideo}
                 fallback={exercise.thumbnail}
+                showPlayOverlay
               />
               <View style={styles.contentBlock}>
                 <View style={styles.exerciseTopRow}>
@@ -131,69 +122,6 @@ export default function ExercisesScreen() {
   );
 }
 
-function PausedVideoPreview({
-  source,
-  fallback,
-}: {
-  source: string;
-  fallback: string;
-}) {
-  if (!source) {
-    return (
-      <Image
-        source={{ uri: fallback }}
-        style={styles.thumbnail}
-        contentFit="cover"
-      />
-    );
-  }
-
-  return <VideoPreview source={source} fallback={fallback} />;
-}
-
-function VideoPreview({ source, fallback }: { source: string; fallback: string }) {
-  const [hasError, setHasError] = useState(false);
-  const player = useVideoPlayer(source, (videoPlayer) => {
-    videoPlayer.muted = true;
-    videoPlayer.pause();
-  });
-
-  useEffect(() => {
-    const subscription = player.addListener("statusChange", (payload) => {
-      if (payload.status === "error") {
-        console.warn("[VideoPreview] failed to load", source, payload.error);
-        setHasError(true);
-      }
-    });
-
-    return () => subscription.remove();
-  }, [player, source]);
-
-  if (hasError) {
-    return (
-      <Image source={{ uri: fallback }} style={styles.thumbnail} contentFit="cover" />
-    );
-  }
-
-  return (
-    <View style={styles.previewWrap}>
-      <VideoViewComponent
-        player={player}
-        style={styles.thumbnail}
-        nativeControls={false}
-        contentFit="cover"
-      />
-      <View style={styles.previewOverlay}>
-        <MaterialCommunityIcons
-          name="play-circle-outline"
-          size={42}
-          color="#ffffff"
-        />
-      </View>
-    </View>
-  );
-}
-
 function formatDuration(seconds: number) {
   if (!Number.isFinite(seconds) || seconds <= 0) {
     return "0s";
@@ -227,23 +155,6 @@ const styles = StyleSheet.create({
   },
   backButtonText: { color: "#fff", fontWeight: "800" },
   exerciseCard: { gap: 14 },
-  previewWrap: { borderRadius: 18, overflow: "hidden" },
-  thumbnail: {
-    width: "100%",
-    height: 180,
-    borderRadius: 18,
-    backgroundColor: "#272727",
-  },
-  previewOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.16)",
-  },
   contentBlock: { gap: 14 },
   exerciseTopRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   exerciseTitle: { color: "#fff", fontSize: 18, fontWeight: "900" },
