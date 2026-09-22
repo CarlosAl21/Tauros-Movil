@@ -1,9 +1,10 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createAudioPlayer, setAudioModeAsync } from "expo-audio";
 import type { AudioPlayer } from "expo-audio";
 import Constants from "expo-constants";
 import * as Haptics from "expo-haptics";
 import * as Notifications from "expo-notifications";
-import { Platform, Vibration } from "react-native";
+import { Alert, Linking, Platform, Vibration } from "react-native";
 
 /**
  * Rest-timer alerts.
@@ -127,6 +128,49 @@ async function ensureAndroidChannels() {
   channelsReady = true;
 }
 
+// Android 12+ (API 31) requires this permission for a notification to fire at
+// its exact scheduled time; on Android 14+ it is OFF by default for any app
+// that isn't a clock/calendar app, and there is no programmatic "request"
+// dialog for it like a normal permission — the user must flip it on in
+// system Settings. We can only deep-link there and ask once.
+const EXACT_ALARM_PROMPT_KEY = "tauros_exact_alarm_prompted_v1";
+
+async function ensureExactAlarmsAllowed() {
+  if (Platform.OS !== "android" || (Platform.Version as number) < 31) {
+    return;
+  }
+
+  try {
+    const alreadyPrompted = await AsyncStorage.getItem(EXACT_ALARM_PROMPT_KEY);
+    if (alreadyPrompted) {
+      return;
+    }
+    await AsyncStorage.setItem(EXACT_ALARM_PROMPT_KEY, "1");
+
+    Alert.alert(
+      "Activa las alarmas de descanso",
+      "Para que la alarma de fin de descanso suene aunque tengas la app en segundo plano, Android pide activar \"Alarmas y recordatorios\" para TaurosGym en Ajustes.",
+      [
+        { text: "Ahora no", style: "cancel" },
+        {
+          text: "Abrir ajustes",
+          onPress: () => {
+            void (async () => {
+              try {
+                await Linking.sendIntent("android.settings.REQUEST_SCHEDULE_EXACT_ALARM");
+              } catch {
+                await Linking.openSettings().catch(() => undefined);
+              }
+            })();
+          },
+        },
+      ],
+    );
+  } catch {
+    // Best-effort only: never block the rest of the flow on this.
+  }
+}
+
 /**
  * Creates the Android channels and asks for notification permission.
  * On Android 13+ the permission prompt only appears once a channel exists,
@@ -151,6 +195,8 @@ export async function ensureNotificationsReady(): Promise<boolean> {
         },
       });
     }
+
+    void ensureExactAlarmsAllowed();
 
     return (
       permissions.granted ||

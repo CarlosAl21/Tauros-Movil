@@ -2,7 +2,7 @@
   "expo": {
     "name": "TaurosGym",
     "slug": "taurosgym",
-    "version": "1.1.0",
+    "version": "1.1.2",
     "orientation": "portrait",
     "icon": "./assets/images/tauros-logo.png",
     "scheme": "taurosmovil",
@@ -25,7 +25,10 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.taurosgym.movil"
+      "package": "com.taurosgym.movil",
+      "permissions": [
+        "android.permission.SCHEDULE_EXACT_ALARM"
+      ]
     },
     "web": {
       "output": "static",
@@ -49,7 +52,9 @@
         "expo-notifications",
         {
           "color": "#f4ae1a",
-          "sounds": ["./assets/sounds/rest_alarm.wav"]
+          "sounds": [
+            "./assets/sounds/rest_alarm.wav"
+          ]
         }
       ],
       "expo-video",
@@ -61,7 +66,17 @@
           "microphonePermission": false,
           "recordAudioAndroid": false
         }
-      ]
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true
+          }
+        }
+      ],
+      "react-native-edge-to-edge"
     ],
     "experiments": {
       "typedRoutes": true,

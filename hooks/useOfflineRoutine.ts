@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { downloadMedia } from '../lib/mediaCache';
+import { queueOfflineAction as queueOfflineActionShared } from '../lib/offline-queue';
 import type { BackendPlan } from '../lib/tauros-backend';
 
 const OFFLINE_ROUTINE_KEY = 'offline_routines';
-const ACTIONS_QUEUE_KEY = 'offline_actions_queue';
 
 /**
  * Extract all media URLs from a BackendPlan.
@@ -65,28 +65,17 @@ export function useOfflineRoutine() {
     return list[routineId] ?? null;
   }
 
+  // Legacy signatures kept only so screens/RoutineScreen.tsx (unrouted, not
+  // rendered anywhere) keeps compiling. The real queue-and-retry flow now
+  // lives in lib/offline-queue.ts, driven by lib/tauros-session.tsx with the
+  // session token instead of an ad hoc apiClient.
   async function queueOfflineAction(action: any) {
-    const raw = await AsyncStorage.getItem(ACTIONS_QUEUE_KEY);
-    const queue = raw ? JSON.parse(raw) : [];
-    queue.push(action);
-    await AsyncStorage.setItem(ACTIONS_QUEUE_KEY, JSON.stringify(queue));
+    await queueOfflineActionShared(action);
   }
 
-  async function flushQueueIfOnline(apiClient: any) {
-    const raw = await AsyncStorage.getItem(ACTIONS_QUEUE_KEY);
-    const queue = raw ? JSON.parse(raw) : [];
-    if (!queue.length) return;
-    for (const action of queue) {
-      try {
-        // each action should have { method, url, body }
-        await apiClient[action.method](action.url, action.body);
-      } catch (e) {
-        // stop processing on first failure to retry later
-        return;
-      }
-    }
-    // all succeeded
-    await AsyncStorage.removeItem(ACTIONS_QUEUE_KEY);
+  async function flushQueueIfOnline(_apiClient: any) {
+    // No-op: lib/tauros-session.tsx already flushes lib/offline-queue.ts
+    // automatically on login and on every foreground return.
   }
 
   return {

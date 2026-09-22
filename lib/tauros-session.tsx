@@ -1,7 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import { ReactNode, createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { AppState, type AppStateStatus } from 'react-native';
 
+import { flushOfflineQueue, OFFLINE_ACTIONS_QUEUE_KEY } from './offline-queue';
 import { taurosRequest, registerSessionExpiredCallback, unregisterSessionExpiredCallback, REFRESH_TOKEN_SECURE_KEY } from './tauros-api';
 
 export type TaurosAuthUser = {
@@ -54,7 +56,6 @@ const EXERCISE_WEIGHTS_KEY_PREFIX = 'tauros_mobile_exercise_weights';
 // generic exercise catalog and media cache which hold no personal data.
 const OFFLINE_PLANS_KEY = 'offline_plans_list';
 const OFFLINE_ROUTINE_KEY = 'offline_routines';
-const OFFLINE_ACTIONS_QUEUE_KEY = 'offline_actions_queue';
 
 const TaurosSessionContext = createContext<TaurosSessionContextValue | null>(null);
 
@@ -108,6 +109,28 @@ export function TaurosSessionProvider({ children }: { children: ReactNode }) {
     });
     return () => unregisterSessionExpiredCallback();
   }, []);
+
+  // Replay anything queued while offline (see lib/offline-queue.ts) as soon
+  // as there is a session, and again every time the app comes back to the
+  // foreground — that's the moment connectivity most likely returned.
+  useEffect(() => {
+    if (!token) {
+      return;
+    }
+
+    void flushOfflineQueue(token);
+
+    const subscription = AppState.addEventListener(
+      'change',
+      (nextAppState: AppStateStatus) => {
+        if (nextAppState === 'active') {
+          void flushOfflineQueue(token);
+        }
+      },
+    );
+
+    return () => subscription.remove();
+  }, [token]);
 
   const persistAuth = async (nextToken: string, nextUser: TaurosAuthUser, refreshToken?: string) => {
     setToken(nextToken);

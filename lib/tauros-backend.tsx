@@ -1,5 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 
+import { queueOfflineAction } from "./offline-queue";
 import { taurosRequest } from "./tauros-api";
 import type { TaurosAuthUser } from "./tauros-session";
 import { useTaurosSession } from "./tauros-session";
@@ -161,7 +170,9 @@ type BackendState = {
   refresh: () => Promise<void>;
   registerForEvent: (eventId: string) => Promise<void>;
   createSuggestion: (payload: BackendSuggestionPayload) => Promise<void>;
-  toggleRoutineExerciseCompletion: (rutinaEjercicioId: string) => Promise<void>;
+  toggleRoutineExerciseCompletion: (
+    rutinaEjercicioId: string,
+  ) => Promise<{ queued: boolean }>;
   loginUser: TaurosAuthUser | null;
 };
 
@@ -266,7 +277,14 @@ function normalizePlansResponse(value: unknown): BackendPlan[] {
   return Array.from(byPlanId.values());
 }
 
-export function useTaurosBackend(): BackendState {
+// One shared instance lives in TaurosBackendProvider (mounted once in
+// app/_layout.tsx). Every screen that calls useTaurosBackend() reads that
+// same instance instead of fetching and holding its own separate copy —
+// otherwise a mutation made on one screen (e.g. marking an exercise done)
+// only updated that screen's local state, and screens already mounted
+// underneath it in the navigation stack kept showing stale data until the
+// whole app was restarted.
+function useTaurosBackendState(): BackendState {
   const { token, user, loadingSession, setPersistentWeight, persistentWeight } =
     useTaurosSession();
   const [exercises, setExercises] = useState<BackendExercise[]>([]);
@@ -383,19 +401,36 @@ export function useTaurosBackend(): BackendState {
   );
 
   const toggleRoutineExerciseCompletion = useCallback(
-    async (rutinaEjercicioId: string) => {
+    async (rutinaEjercicioId: string): Promise<{ queued: boolean }> => {
       if (!token) {
         throw new Error(
           "Debes iniciar sesion para actualizar el estado del ejercicio",
         );
       }
 
-      await taurosRequest(`/rutina-ejercicio/${rutinaEjercicioId}/completada`, {
-        method: "PATCH",
-        token,
-      });
+      const path = `/rutina-ejercicio/${rutinaEjercicioId}/completada`;
 
-      await refresh();
+      try {
+        await taurosRequest(path, { method: "PATCH", token });
+        await refresh();
+        return { queued: false };
+      } catch (error) {
+        if (!(error instanceof TypeError)) {
+          // The server actually answered (bad id, auth, etc.) — a real
+          // error, not a connectivity issue. Surface it as before.
+          throw error;
+        }
+
+        // Network unreachable: save it instead of losing the completion.
+        // lib/tauros-session.tsx replays this once connectivity returns.
+        await queueOfflineAction({
+          id: `toggle-exercise-completion-${rutinaEjercicioId}-${Date.now()}`,
+          kind: "toggle-exercise-completion",
+          path,
+          method: "PATCH",
+        });
+        return { queued: true };
+      }
     },
     [refresh, token],
   );
@@ -434,4 +469,25 @@ export function useTaurosBackend(): BackendState {
       user,
     ],
   );
+}
+
+const TaurosBackendContext = createContext<BackendState | null>(null);
+
+export function TaurosBackendProvider({ children }: { children: ReactNode }) {
+  const value = useTaurosBackendState();
+  return (
+    <TaurosBackendContext.Provider value={value}>
+      {children}
+    </TaurosBackendContext.Provider>
+  );
+}
+
+export function useTaurosBackend(): BackendState {
+  const context = useContext(TaurosBackendContext);
+  if (!context) {
+    throw new Error(
+      "useTaurosBackend must be used within a TaurosBackendProvider",
+    );
+  }
+  return context;
 }

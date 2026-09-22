@@ -437,7 +437,7 @@ export default function ExerciseDetailScreen() {
       }
 
       const wasCompleted = completed;
-      await toggleRoutineExerciseCompletion(activeRoutineId);
+      const { queued } = await toggleRoutineExerciseCompletion(activeRoutineId);
       const nowCompleted = !wasCompleted;
       setCompleted(nowCompleted);
 
@@ -447,7 +447,9 @@ export default function ExerciseDetailScreen() {
         onSkipWarmupRest();
         void notifyExerciseCompleted(
           "Ejercicio completado",
-          "La carga quedó guardada para tu próximo ingreso.",
+          queued
+            ? "Sin conexión: se guardó en el dispositivo y se sincronizará solo cuando vuelvas a tener señal."
+            : "La carga quedó guardada para tu próximo ingreso.",
         );
       }
 
