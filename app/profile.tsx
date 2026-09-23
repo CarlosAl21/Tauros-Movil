@@ -27,6 +27,15 @@ import {
 } from "@/lib/tauros-backend";
 import { TAUROS_API_BASE_URL } from "@/lib/tauros-api";
 import { useTaurosSession } from "@/lib/tauros-session";
+import {
+    formatWeight,
+    parseWeightInput,
+    toKg,
+    toWeightInput,
+    type WeightUnit,
+} from "@/lib/weight-units";
+
+const WEIGHT_UNIT_OPTIONS: WeightUnit[] = ["kg", "lb"];
 
 const PRIVACY_URL = `${TAUROS_API_BASE_URL}/privacy`;
 const TERMS_URL = `${TAUROS_API_BASE_URL}/terms`;
@@ -47,6 +56,8 @@ export default function ProfileScreen() {
     user,
     persistentWeight,
     setPersistentWeight,
+    weightUnit,
+    setWeightUnit,
     logout,
     updateProfile,
     changePassword,
@@ -59,7 +70,7 @@ export default function ProfileScreen() {
   const [apellido, setApellido] = useState(user?.apellido ?? "");
   const [correo, setCorreo] = useState(user?.correo ?? "");
   const [weightInput, setWeightInput] = useState(
-    String(persistentWeight || ""),
+    toWeightInput(persistentWeight, weightUnit),
   );
 
   const [currentPassword, setCurrentPassword] = useState("");
@@ -154,16 +165,22 @@ export default function ProfileScreen() {
   };
 
   const saveWeight = async () => {
-    const parsed = Number(weightInput);
-    if (!Number.isFinite(parsed) || parsed <= 0) {
+    const parsed = parseWeightInput(weightInput);
+    if (parsed === null) {
       Alert.alert("Peso", "Ingresa un peso válido mayor a 0.");
       return;
     }
 
     try {
       setSaving(true);
-      await setPersistentWeight(parsed);
-      Alert.alert("Peso", "Peso registrado correctamente.");
+      // Typed in the selected unit, always stored/sent in kg.
+      const { queued } = await setPersistentWeight(toKg(parsed, weightUnit));
+      Alert.alert(
+        "Peso",
+        queued
+          ? "Sin conexión: el peso se guardó en el dispositivo y se sincronizará cuando vuelvas a tener señal."
+          : "Peso registrado correctamente.",
+      );
       setShowWeightForm(false);
     } catch (err) {
       Alert.alert(
@@ -227,8 +244,52 @@ export default function ProfileScreen() {
           <Text style={styles.infoText}>Correo: {user?.correo || "-"}</Text>
           <Text style={styles.infoText}>
             Peso actual:{" "}
-            {persistentWeight ? `${persistentWeight} kg` : "No registrado"}
+            {persistentWeight
+              ? formatWeight(persistentWeight, weightUnit)
+              : "No registrado"}
           </Text>
+
+          <View style={styles.fieldRow}>
+            <Text style={styles.label}>Unidad de peso</Text>
+            <View style={styles.segmented}>
+              {WEIGHT_UNIT_OPTIONS.map((unit) => {
+                const selected = unit === weightUnit;
+                return (
+                  <Pressable
+                    key={unit}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    style={[
+                      styles.segment,
+                      selected ? styles.segmentSelected : undefined,
+                    ]}
+                    onPress={() => {
+                      if (selected) {
+                        return;
+                      }
+                      // Keep an in-progress entry equivalent in the new unit.
+                      const typed = parseWeightInput(weightInput);
+                      if (typed !== null) {
+                        setWeightInput(
+                          toWeightInput(toKg(typed, weightUnit), unit),
+                        );
+                      }
+                      void setWeightUnit(unit);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.segmentLabel,
+                        selected ? styles.segmentLabelSelected : undefined,
+                      ]}
+                    >
+                      {unit}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
 
           <TaurosButton
             label={
@@ -384,7 +445,7 @@ export default function ProfileScreen() {
           >
             <TaurosCard style={styles.card}>
               <View style={styles.fieldRow}>
-                <Text style={styles.label}>Peso (kg)</Text>
+                <Text style={styles.label}>{`Peso (${weightUnit})`}</Text>
                 <TextInput
                   value={weightInput}
                   onChangeText={setWeightInput}
@@ -456,6 +517,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
+  segmented: {
+    flexDirection: "row",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#333",
+    backgroundColor: "#0b0b0b",
+    padding: 3,
+    gap: 3,
+  },
+  segment: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 8,
+    borderRadius: 9,
+  },
+  segmentSelected: { backgroundColor: "#f4ae1a" },
+  segmentLabel: { color: "#cfcfcf", fontWeight: "800" },
+  segmentLabelSelected: { color: "#111111" },
   separator: { height: 1, backgroundColor: "#2f2f2f", marginVertical: 4 },
   termsText: { color: "#bdbdbd", lineHeight: 20 },
   legalLink: {

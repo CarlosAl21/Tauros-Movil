@@ -62,9 +62,13 @@ export default function ExercisesScreen() {
                 <View style={styles.exerciseTopRow}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.exerciseTitle}>{exercise.nombre}</Text>
-                    <Text style={styles.exerciseMeta}>
-                      {exercise.categoria} · {exercise.tipo}
-                    </Text>
+                    {exercise.categoria || exercise.tipo ? (
+                      <Text style={styles.exerciseMeta}>
+                        {[exercise.categoria, exercise.tipo]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </Text>
+                    ) : null}
                   </View>
                   <MaterialCommunityIcons
                     name="chevron-right"
@@ -73,13 +77,19 @@ export default function ExercisesScreen() {
                   />
                 </View>
 
-                <View style={styles.tagsRow}>
-                  <TaurosPill
-                    label={`Categoria: ${exercise.categoria}`}
-                    tone="blue"
-                  />
-                  <TaurosPill label={exercise.tipo} tone="muted" />
-                </View>
+                {exercise.categoria || exercise.tipo ? (
+                  <View style={styles.tagsRow}>
+                    {exercise.categoria ? (
+                      <TaurosPill
+                        label={`Categoria: ${exercise.categoria}`}
+                        tone="blue"
+                      />
+                    ) : null}
+                    {exercise.tipo ? (
+                      <TaurosPill label={exercise.tipo} tone="muted" />
+                    ) : null}
+                  </View>
+                ) : null}
 
                 {exercise.maquina ? (
                   <View style={styles.machineBlock}>
@@ -97,22 +107,17 @@ export default function ExercisesScreen() {
                   </View>
                 ) : null}
 
-                <View style={styles.statsRow}>
-                  <View style={styles.statItem}>
-                    <Text style={styles.statLabel}>
-                      {exercise.tiempoSegundos ? "Series y tiempo" : "Series"}
-                    </Text>
-                    <Text style={styles.statValue}>
-                      {exercise.tiempoSegundos
-                        ? `${exercise.series} · ${formatDuration(exercise.tiempoSegundos)}`
-                        : exercise.series}
-                    </Text>
+                {/* Series, rest and load belong to a routine, not the catalog. */}
+                {exercise.tiempoSegundos ? (
+                  <View style={styles.statsRow}>
+                    <View style={styles.statItem}>
+                      <Text style={styles.statLabel}>Tiempo</Text>
+                      <Text style={styles.statValue}>
+                        {formatDuration(exercise.tiempoSegundos)}
+                      </Text>
+                    </View>
                   </View>
-                  <View style={styles.statItem}>
-                    <Text style={styles.statLabel}>Descanso</Text>
-                    <Text style={styles.statValue}>{exercise.descanso}</Text>
-                  </View>
-                </View>
+                ) : null}
               </View>
             </TaurosCard>
           </Pressable>

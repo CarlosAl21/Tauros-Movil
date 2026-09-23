@@ -9,7 +9,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { SystemBars } from "react-native-edge-to-edge";
 
 import { useColorScheme } from "@/hooks/use-color-scheme";
-import { configureNotificationHandler } from "@/lib/rest-notifications";
+import { initializeNotifications } from "@/lib/rest-notifications";
 import { TaurosBackendProvider } from "@/lib/tauros-backend";
 import { TaurosSessionProvider } from "@/lib/tauros-session";
 
@@ -17,7 +17,8 @@ export const unstable_settings = {
   anchor: "(tabs)",
 };
 
-configureNotificationHandler();
+// Foreground presentation + Android channels (and removal of legacy ones).
+initializeNotifications();
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();

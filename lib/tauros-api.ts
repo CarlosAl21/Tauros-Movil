@@ -130,7 +130,9 @@ export async function taurosRequest<T>(path: string, options: RequestOptions = {
         ? payload
         : 'Error de conexion con el backend';
 
-    throw new Error(message || 'Error de conexion con el backend');
+    const err = new Error(message || 'Error de conexion con el backend') as Error & { status: number };
+    err.status = response.status;
+    throw err;
   }
 
   return payload as T;

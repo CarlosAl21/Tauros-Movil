@@ -15,102 +15,6 @@ import type {
 } from "./tauros-data";
 import { normalizeVideoUrl } from "./cloudinary";
 
-const BACKUP_EXERCISES: TaurosExercise[] = [
-  {
-    id: "sentadilla-hack",
-    nombre: "Sentadilla En Hack",
-    categoria: "Pierna",
-    tipo: "Fuerza",
-    linkVideo:
-      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-    maquina: { numero: "11", nombre: "Hack Squat" },
-    series: "3 x 8 a 10",
-    repeticiones: "8 a 10",
-    descanso: "00:45",
-    cargaSugerida: "0.0 kg",
-    notas: "Mantener la espalda pegada al respaldo y bajar con control.",
-    musculos: ["Gluteos", "Cuadriceps", "Gemelos"],
-    activacion: ["Cuadriceps", "Gluteos"],
-    thumbnail:
-      "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&w=900&q=80",
-  },
-  {
-    id: "press-pecho-maquina",
-    nombre: "Press De Pecho En Maquina",
-    categoria: "Pecho",
-    tipo: "Empuje",
-    linkVideo:
-      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-    maquina: { numero: "4", nombre: "Chest Press" },
-    series: "4 x 10 a 12",
-    repeticiones: "10 a 12",
-    descanso: "01:00",
-    cargaSugerida: "12.5 kg",
-    notas: "Juntar escapulas y evitar extender del todo los codos.",
-    musculos: ["Pectoral", "Triceps", "Deltoides"],
-    activacion: ["Pectoral", "Triceps"],
-    thumbnail:
-      "https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&w=900&q=80",
-  },
-  {
-    id: "jalon-pecho",
-    nombre: "Jalon Al Pecho",
-    categoria: "Espalda",
-    tipo: "Tiron",
-    linkVideo:
-      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4",
-    maquina: { numero: "8", nombre: "Lat Pulldown" },
-    series: "4 x 10",
-    repeticiones: "10",
-    descanso: "00:50",
-    cargaSugerida: "18.0 kg",
-    notas: "Traer la barra al pecho sin balancear el tronco.",
-    musculos: ["Dorsal", "Biceps", "Deltoides Posterior"],
-    activacion: ["Dorsal", "Biceps"],
-    thumbnail:
-      "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&w=900&q=80",
-  },
-  {
-    id: "peso-muerto-rumano",
-    nombre: "Peso Muerto Rumano",
-    categoria: "Posterior",
-    tipo: "Bisagra",
-    linkVideo:
-      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4",
-    maquina: null,
-    series: "3 x 12",
-    repeticiones: "12",
-    descanso: "01:15",
-    cargaSugerida: "20.0 kg",
-    notas: "Cadera atrás, columna neutra y recorrido completo.",
-    musculos: ["Femorales", "Gluteos", "Core"],
-    activacion: ["Femorales", "Gluteos"],
-    thumbnail:
-      "https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&w=900&q=80",
-  },
-];
-
-const exerciseMetaByName = new Map(
-  BACKUP_EXERCISES.map((item) => [normalize(item.nombre), item]),
-);
-const exerciseMetaById = new Map(
-  BACKUP_EXERCISES.map((item) => [item.id, item]),
-);
-
-function normalize(value: string | undefined) {
-  return String(value || "")
-    .trim()
-    .toLowerCase();
-}
-
-function lookupExerciseMeta(exerciseId?: string, name?: string) {
-  return (
-    (exerciseId && exerciseMetaById.get(exerciseId)) ||
-    (name && exerciseMetaByName.get(normalize(name))) ||
-    BACKUP_EXERCISES[0]
-  );
-}
-
 function buildMachine(exercise: BackendExercise) {
   if (!exercise.maquina) {
     return null;
@@ -215,14 +119,13 @@ export function mapBackendExercise(
   exercise: BackendExercise,
   fallback?: Partial<TaurosExercise>,
 ): TaurosExercise {
-  const meta = lookupExerciseMeta(exercise.ejercicioId, exercise.nombre);
-
+  // Only what the backend (or an explicit fallback) provides. Series, rest and
+  // load are routine data and are never invented for catalog exercises.
   return {
     id: exercise.ejercicioId,
     nombre: exercise.nombre,
-    categoria:
-      exercise.categoria?.nombre ?? fallback?.categoria ?? meta.categoria,
-    tipo: exercise.tipo?.nombre ?? fallback?.tipo ?? meta.tipo,
+    categoria: exercise.categoria?.nombre ?? fallback?.categoria ?? "",
+    tipo: exercise.tipo?.nombre ?? fallback?.tipo ?? "",
     linkVideo: normalizeVideoUrl(exercise.linkVideo),
     linkAM: normalizeVideoUrl(exercise.linkAM),
     tiempoSegundos: Number.isFinite(Number(exercise.tiempoSegundos))
@@ -230,16 +133,14 @@ export function mapBackendExercise(
       : null,
     calentamientos: mapWarmups(exercise.calentamientos),
     maquina: buildMachine(exercise) ?? fallback?.maquina ?? null,
-    series: fallback?.series ?? meta.series,
-    repeticiones: exercise.tiempoSegundos
-      ? "-"
-      : (fallback?.repeticiones ?? meta.repeticiones),
-    descanso: fallback?.descanso ?? meta.descanso,
-    cargaSugerida: fallback?.cargaSugerida ?? meta.cargaSugerida,
-    notas: fallback?.notas ?? meta.notas,
-    musculos: fallback?.musculos ?? meta.musculos,
-    activacion: fallback?.activacion ?? meta.activacion,
-    thumbnail: fallback?.thumbnail ?? meta.thumbnail,
+    series: fallback?.series,
+    repeticiones: fallback?.repeticiones,
+    descanso: fallback?.descanso,
+    cargaSugerida: fallback?.cargaSugerida,
+    notas: fallback?.notas,
+    musculos: fallback?.musculos,
+    activacion: fallback?.activacion,
+    thumbnail: fallback?.thumbnail,
   };
 }
 

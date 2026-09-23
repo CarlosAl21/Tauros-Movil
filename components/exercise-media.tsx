@@ -1,9 +1,17 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { VideoView, useVideoPlayer } from "expo-video";
+import { useFocusEffect } from "expo-router";
 import type { ComponentType } from "react";
-import { useEffect, useState } from "react";
-import { StyleProp, StyleSheet, View, ViewStyle } from "react-native";
+import { useCallback, useEffect, useState } from "react";
+import {
+  AppState,
+  Platform,
+  StyleProp,
+  StyleSheet,
+  View,
+  ViewStyle,
+} from "react-native";
 
 import { EXERCISE_MEDIA_ASPECT_RATIO } from "@/lib/cloudinary";
 
@@ -12,6 +20,7 @@ const VideoViewComponent = VideoView as unknown as ComponentType<{
   style: object;
   nativeControls?: boolean;
   contentFit?: "cover" | "contain" | "fill" | "none" | "scale-down";
+  surfaceType?: "textureView" | "surfaceView";
 }>;
 
 type ExerciseMediaProps = {
@@ -23,6 +32,11 @@ type ExerciseMediaProps = {
   autoPlay?: boolean;
   /** Show a play glyph over a paused clip. */
   showPlayOverlay?: boolean;
+  /**
+   * Let the media receive touches. Off by default: the native video view
+   * would otherwise swallow taps meant for a pressable parent (list cards).
+   */
+  interactive?: boolean;
   style?: StyleProp<ViewStyle>;
 };
 
@@ -37,10 +51,14 @@ export function ExerciseMedia({
   fallback,
   autoPlay = false,
   showPlayOverlay = false,
+  interactive = false,
   style,
 }: ExerciseMediaProps) {
   return (
-    <View style={[styles.frame, style]}>
+    <View
+      style={[styles.frame, style]}
+      pointerEvents={interactive ? "auto" : "none"}
+    >
       {source ? (
         <ExerciseVideoPlayer
           source={source}
@@ -104,6 +122,42 @@ function ExerciseVideoPlayer({
     return () => subscription.remove();
   }, [player, source]);
 
+  // expo-video pauses when the app goes to the background (or the screen
+  // loses focus) and never resumes on its own, leaving a frozen frame.
+  // Resume while the screen is focused and pause when it is not.
+  useFocusEffect(
+    useCallback(() => {
+      if (!autoPlay) {
+        return;
+      }
+
+      const resume = () => {
+        try {
+          player.loop = true;
+          player.play();
+        } catch {
+          // Player already released (screen unmounting).
+        }
+      };
+
+      resume();
+      const subscription = AppState.addEventListener("change", (state) => {
+        if (state === "active") {
+          resume();
+        }
+      });
+
+      return () => {
+        subscription.remove();
+        try {
+          player.pause();
+        } catch {
+          // Player already released (screen unmounting).
+        }
+      };
+    }, [autoPlay, player]),
+  );
+
   if (hasError) {
     return <FallbackImage uri={fallback} />;
   }
@@ -115,6 +169,9 @@ function ExerciseVideoPlayer({
         style={styles.fill}
         nativeControls={false}
         contentFit="contain"
+        // TextureView keeps rendering correctly inside scroll views and after
+        // the app returns from the background (SurfaceView can go blank).
+        surfaceType={Platform.OS === "android" ? "textureView" : undefined}
       />
       {showPlayOverlay && !autoPlay ? (
         <View pointerEvents="none" style={styles.overlay}>

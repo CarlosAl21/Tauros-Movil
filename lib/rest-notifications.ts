@@ -1,43 +1,55 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createAudioPlayer, setAudioModeAsync } from "expo-audio";
 import type { AudioPlayer } from "expo-audio";
 import Constants from "expo-constants";
-import * as Haptics from "expo-haptics";
 import * as Notifications from "expo-notifications";
 import { Alert, Linking, Platform, Vibration } from "react-native";
 
-/**
- * Rest-timer alerts.
- *
- * - Background / locked screen: a local notification scheduled for an absolute
- *   date. The OS fires it, so it works even if the JS thread is suspended.
- *   Android plays the sound from the channel; iOS plays `content.sound`.
- * - Foreground: the OS notification is suppressed (see the handler below) and
- *   the app plays the same sound at full volume plus strong haptics instead,
- *   so the user never hears the alert twice.
- *
- * The custom sound (`assets/sounds/rest_alarm.wav`) is bundled natively through
- * the `expo-notifications` config plugin in app.json, so changing it requires a
- * native rebuild (EAS build / expo run:*). The file name must match the
- * registered asset, and stays lowercase/underscored for Android `res/raw`.
- */
-export const REST_ALARM_SOUND_FILE = "rest_alarm.wav";
-// Android channel settings are immutable once created, so the id carries a
-// version. Bump it (and delete the old id below) whenever the settings change.
-const REST_CHANNEL_ID = "tauros-rest-alarm-v2";
-const GENERAL_CHANNEL_ID = "tauros-general";
-const LEGACY_CHANNEL_IDS = ["tauros-rest-reminder"];
-const REST_NOTIFICATION_KIND = "rest-finished";
+import {
+  canScheduleExactAlarms,
+  openExactAlarmSettings,
+} from "../modules/tauros-exact-alarm";
 
+/**
+ * Rest-timer alarm.
+ *
+ * Single source of truth: when a rest starts, ONE system notification is
+ * scheduled for the absolute end time. The OS fires it, so it rings whether
+ * the app is in the foreground, in the background or closed:
+ * - Android plays the sound configured on the rest channel (alarm stream).
+ * - iOS plays `content.sound`.
+ * - In the foreground the handler below presents it too (banner + sound), so
+ *   the app never plays a second, in-app copy of the sound.
+ *
+ * The notification is only cancelled/dismissed on explicit user actions (skip,
+ * stop, new rest, leaving the exercise, completing it) or after the user is
+ * back in the app once it rang — never on natural expiry, which would kill the
+ * alarm the moment it fires.
+ *
+ * The in-app sound (`playRestFinishedFallbackAlert`) is only a fallback for
+ * when system notifications are unavailable (permission denied, Expo Go, web).
+ *
+ * The sound (`assets/sounds/rest_alarm.wav`) is bundled natively by the
+ * `expo-notifications` config plugin (app.json `sounds`) and protected from
+ * Android resource shrinking by `plugins/with-keep-alarm-sound.js`, so
+ * changing it requires a native rebuild.
+ */
 export type RestTimerKind = "interval" | "warmup";
 
-// Only one scheduled notification per timer kind can exist because the
-// identifier is deterministic: scheduling again replaces it (no duplicates) and
-// cancelling never needs a stored id.
+const REST_ALARM_SOUND_FILE = "rest_alarm.wav";
+// Android freezes channel settings at creation time, so the id carries a
+// version. Bump it and move the old id to LEGACY_CHANNEL_IDS on any change.
+const REST_CHANNEL_ID = "tauros-rest-alarm-v3";
+const GENERAL_CHANNEL_ID = "tauros-general";
+const LEGACY_CHANNEL_IDS = ["tauros-rest-reminder", "tauros-rest-alarm-v2"];
+const VIBRATION_PATTERN = [0, 500, 200, 500, 200, 800];
+
+// Deterministic id per timer kind: scheduling again replaces the previous
+// alarm and cancelling never needs a stored id.
 const restIdentifier = (kind: RestTimerKind) => `tauros-rest-${kind}`;
 
-let channelsReady = false;
-let alarmPlayer: AudioPlayer | null = null;
+let channelsReady: Promise<void> | null = null;
+let exactAlarmPromptShown = false;
+let fallbackPlayer: AudioPlayer | null = null;
 
 // Notification calls are serialised so a cancel issued right after a schedule
 // (e.g. the user skips the rest immediately) always runs after it.
@@ -59,122 +71,79 @@ function canUseSystemNotifications() {
   return !isExpoGo;
 }
 
+function ensureAndroidChannels() {
+  if (Platform.OS !== "android") {
+    return Promise.resolve();
+  }
+
+  channelsReady ??= (async () => {
+    await Promise.all(
+      LEGACY_CHANNEL_IDS.map((id) =>
+        Notifications.deleteNotificationChannelAsync(id).catch(() => undefined),
+      ),
+    );
+
+    await Notifications.setNotificationChannelAsync(REST_CHANNEL_ID, {
+      name: "Fin del descanso",
+      description: "Alarma sonora cuando termina tu tiempo de descanso.",
+      importance: Notifications.AndroidImportance.MAX,
+      sound: REST_ALARM_SOUND_FILE,
+      enableVibrate: true,
+      vibrationPattern: VIBRATION_PATTERN,
+      showBadge: false,
+      // Alarm stream: louder than the notification stream and not silenced
+      // by the "vibrate" ringer mode.
+      audioAttributes: {
+        usage: Notifications.AndroidAudioUsage.ALARM,
+        contentType: Notifications.AndroidAudioContentType.SONIFICATION,
+      },
+      // Only effective if the user granted Do Not Disturb access.
+      bypassDnd: true,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    });
+
+    await Notifications.setNotificationChannelAsync(GENERAL_CHANNEL_ID, {
+      name: "General",
+      importance: Notifications.AndroidImportance.HIGH,
+      sound: "default",
+      vibrationPattern: [0, 250, 150, 250],
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    });
+  })().catch((error) => {
+    channelsReady = null;
+    throw error;
+  });
+
+  return channelsReady;
+}
+
 /**
- * Foreground behaviour. Call once at app start (root layout).
- * Rest alerts are handled in-app while the app is open, so the system banner
- * and sound are suppressed only for those; everything else keeps the default.
+ * App start (root layout): foreground presentation + channel setup.
+ * Every notification, the rest alarm included, is presented in the foreground
+ * with banner and sound: that system notification IS the foreground alarm.
  */
-export function configureNotificationHandler() {
-  if (Platform.OS === "web") {
+export function initializeNotifications() {
+  if (!canUseSystemNotifications()) {
     return;
   }
 
   Notifications.setNotificationHandler({
-    handleNotification: async (notification) => {
-      const isRestAlert =
-        notification.request.content.data?.kind === REST_NOTIFICATION_KIND;
-
-      return {
-        shouldShowBanner: !isRestAlert,
-        shouldShowList: !isRestAlert,
-        shouldPlaySound: !isRestAlert,
-        shouldSetBadge: false,
-      };
-    },
+    handleNotification: async () => ({
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    }),
   });
-}
 
-async function ensureAndroidChannels() {
-  if (Platform.OS !== "android" || channelsReady) {
-    return;
-  }
-
-  await Promise.all(
-    LEGACY_CHANNEL_IDS.map((id) =>
-      Notifications.deleteNotificationChannelAsync(id).catch(() => undefined),
-    ),
+  void ensureAndroidChannels().catch((error) =>
+    console.warn("[rest-notifications] channel setup failed", error),
   );
-
-  await Notifications.setNotificationChannelAsync(REST_CHANNEL_ID, {
-    name: "Fin del descanso",
-    description: "Aviso sonoro cuando termina tu tiempo de descanso.",
-    importance: Notifications.AndroidImportance.MAX,
-    sound: REST_ALARM_SOUND_FILE,
-    enableVibrate: true,
-    vibrationPattern: [0, 500, 200, 500, 200, 800],
-    enableLights: true,
-    lightColor: "#F4AE1A",
-    showBadge: false,
-    // ALARM usage keeps the sound audible on the alarm volume stream, which
-    // is usually louder than the notification stream and is not muted by
-    // "vibrate/silent" ringer modes.
-    audioAttributes: {
-      usage: Notifications.AndroidAudioUsage.ALARM,
-      contentType: Notifications.AndroidAudioContentType.SONIFICATION,
-    },
-    // Only takes effect if the user granted Do Not Disturb access.
-    bypassDnd: true,
-    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-  });
-
-  await Notifications.setNotificationChannelAsync(GENERAL_CHANNEL_ID, {
-    name: "General",
-    importance: Notifications.AndroidImportance.HIGH,
-    sound: "default",
-    vibrationPattern: [0, 250, 150, 250],
-    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-  });
-
-  channelsReady = true;
-}
-
-// Android 12+ (API 31) requires this permission for a notification to fire at
-// its exact scheduled time; on Android 14+ it is OFF by default for any app
-// that isn't a clock/calendar app, and there is no programmatic "request"
-// dialog for it like a normal permission — the user must flip it on in
-// system Settings. We can only deep-link there and ask once.
-const EXACT_ALARM_PROMPT_KEY = "tauros_exact_alarm_prompted_v1";
-
-async function ensureExactAlarmsAllowed() {
-  if (Platform.OS !== "android" || (Platform.Version as number) < 31) {
-    return;
-  }
-
-  try {
-    const alreadyPrompted = await AsyncStorage.getItem(EXACT_ALARM_PROMPT_KEY);
-    if (alreadyPrompted) {
-      return;
-    }
-    await AsyncStorage.setItem(EXACT_ALARM_PROMPT_KEY, "1");
-
-    Alert.alert(
-      "Activa las alarmas de descanso",
-      "Para que la alarma de fin de descanso suene aunque tengas la app en segundo plano, Android pide activar \"Alarmas y recordatorios\" para TaurosGym en Ajustes.",
-      [
-        { text: "Ahora no", style: "cancel" },
-        {
-          text: "Abrir ajustes",
-          onPress: () => {
-            void (async () => {
-              try {
-                await Linking.sendIntent("android.settings.REQUEST_SCHEDULE_EXACT_ALARM");
-              } catch {
-                await Linking.openSettings().catch(() => undefined);
-              }
-            })();
-          },
-        },
-      ],
-    );
-  } catch {
-    // Best-effort only: never block the rest of the flow on this.
-  }
 }
 
 /**
- * Creates the Android channels and asks for notification permission.
- * On Android 13+ the permission prompt only appears once a channel exists,
- * so the channels are always created first.
+ * Creates the Android channels (required before the Android 13+ prompt) and
+ * requests notification permission if it can still be asked.
  * Safe to call repeatedly; returns whether notifications can be delivered.
  */
 export async function ensureNotificationsReady(): Promise<boolean> {
@@ -188,15 +157,9 @@ export async function ensureNotificationsReady(): Promise<boolean> {
     let permissions = await Notifications.getPermissionsAsync();
     if (!permissions.granted && permissions.canAskAgain) {
       permissions = await Notifications.requestPermissionsAsync({
-        ios: {
-          allowAlert: true,
-          allowSound: true,
-          allowBadge: true,
-        },
+        ios: { allowAlert: true, allowSound: true, allowBadge: true },
       });
     }
-
-    void ensureExactAlarmsAllowed();
 
     return (
       permissions.granted ||
@@ -208,39 +171,78 @@ export async function ensureNotificationsReady(): Promise<boolean> {
   }
 }
 
-/** Schedules the "rest finished" notification for an absolute end time. */
+/**
+ * Android 12+ needs "Alarms & reminders" access for the alarm to fire at the
+ * exact second (Android 14+ denies it by default); without it the OS may
+ * deliver it minutes late. There is no runtime dialog, only a settings screen,
+ * so the state is checked on every rest start and the user is asked at most
+ * once per app session.
+ */
+function promptForExactAlarmsIfMissing() {
+  if (Platform.OS !== "android" || exactAlarmPromptShown) {
+    return;
+  }
+
+  // null = unknown (native module unavailable): never nag in that case.
+  if (canScheduleExactAlarms() !== false) {
+    return;
+  }
+
+  exactAlarmPromptShown = true;
+  Alert.alert(
+    "Activa las alarmas de descanso",
+    'Para que la alarma de fin de descanso suene a tiempo con la app en segundo plano o cerrada, activa "Alarmas y recordatorios" para TaurosGym en Ajustes.',
+    [
+      { text: "Ahora no", style: "cancel" },
+      {
+        text: "Abrir ajustes",
+        onPress: () => {
+          if (!openExactAlarmSettings()) {
+            void Linking.openSettings().catch(() => undefined);
+          }
+        },
+      },
+    ],
+  );
+}
+
+/**
+ * Schedules the rest alarm for an absolute end time, replacing any previous
+ * one of the same kind. Resolves to true when the system alarm is in place
+ * (it will ring by itself); false means the caller must alert in-app.
+ */
 export function scheduleRestNotification(params: {
   kind: RestTimerKind;
   title: string;
   body: string;
   endsAt: number;
-}) {
+}): Promise<boolean> {
   return enqueue(async () => {
-    if (params.endsAt - Date.now() <= 500) {
-      return;
-    }
-
     const ready = await ensureNotificationsReady();
     if (!ready) {
-      return;
+      return false;
     }
+
+    promptForExactAlarmsIfMissing();
 
     try {
       const identifier = restIdentifier(params.kind);
-      // Explicit cancel first: guarantees a single pending alert per kind
-      // even on platforms that do not replace by identifier.
-      await Notifications.cancelScheduledNotificationAsync(identifier);
+      await clearRestNotification(identifier);
+
+      if (params.endsAt - Date.now() <= 500) {
+        return false;
+      }
+
       await Notifications.scheduleNotificationAsync({
         identifier,
         content: {
           title: params.title,
           body: params.body,
           sound: REST_ALARM_SOUND_FILE,
+          // Pre-Android 8 devices use the per-notification priority.
           priority: Notifications.AndroidNotificationPriority.MAX,
-          // Breaks through Focus modes when the app has the Time Sensitive
-          // capability; iOS treats it as a regular alert otherwise.
-          interruptionLevel: "timeSensitive",
-          data: { kind: REST_NOTIFICATION_KIND, timer: params.kind },
+          vibrate: VIBRATION_PATTERN,
+          data: { kind: "rest-finished", timer: params.kind },
         },
         trigger: {
           type: Notifications.SchedulableTriggerInputTypes.DATE,
@@ -248,27 +250,46 @@ export function scheduleRestNotification(params: {
           channelId: REST_CHANNEL_ID,
         },
       });
+      return true;
     } catch (error) {
       console.warn("[rest-notifications] schedule failed", error);
+      return false;
     }
   });
 }
 
-/** Cancels a pending rest notification (skip, stop, leaving the screen). */
+async function clearRestNotification(identifier: string) {
+  await Notifications.cancelScheduledNotificationAsync(identifier).catch(
+    () => undefined,
+  );
+  await Notifications.dismissNotificationAsync(identifier).catch(
+    () => undefined,
+  );
+}
+
+/**
+ * Cancels the pending alarm and removes it from the tray. Only for explicit
+ * user actions: skip, stop, completing the exercise, leaving the screen.
+ */
 export function cancelRestNotification(kind: RestTimerKind) {
   if (!canUseSystemNotifications()) {
     return Promise.resolve();
   }
 
-  return enqueue(async () => {
-    try {
-      const identifier = restIdentifier(kind);
-      await Notifications.cancelScheduledNotificationAsync(identifier);
-      await Notifications.dismissNotificationAsync(identifier);
-    } catch {
-      // Nothing scheduled or already delivered: nothing to cancel.
-    }
-  });
+  return enqueue(() => clearRestNotification(restIdentifier(kind)));
+}
+
+/** Removes an already delivered alarm from the tray (user is back in the app). */
+export function dismissRestNotification(kind: RestTimerKind) {
+  if (!canUseSystemNotifications()) {
+    return Promise.resolve();
+  }
+
+  return enqueue(() =>
+    Notifications.dismissNotificationAsync(restIdentifier(kind)).catch(
+      () => undefined,
+    ),
+  );
 }
 
 /** Immediate, non-rest notification (e.g. "exercise completed"). */
@@ -292,47 +313,36 @@ export function notifyNow(title: string, body: string) {
   });
 }
 
-async function playAlarmSound() {
+/**
+ * In-app alarm (loud sound + vibration) for when no system alarm could be
+ * scheduled. Never used when the system notification rings, so the user
+ * never hears it twice.
+ */
+export function playRestFinishedFallbackAlert() {
+  Vibration.vibrate(VIBRATION_PATTERN);
+
   if (Platform.OS === "web") {
     return;
   }
 
-  try {
-    // iOS: without `playsInSilentMode` the sound is muted by the ring/silent
-    // switch. `mixWithOthers` avoids leaving other apps' audio ducked.
-    await setAudioModeAsync({
-      playsInSilentMode: true,
-      interruptionMode: "mixWithOthers",
-      allowsRecording: false,
-      shouldPlayInBackground: false,
-    });
+  void (async () => {
+    try {
+      // iOS: without `playsInSilentMode` the ring/silent switch mutes it.
+      await setAudioModeAsync({
+        playsInSilentMode: true,
+        interruptionMode: "mixWithOthers",
+        allowsRecording: false,
+        shouldPlayInBackground: false,
+      });
 
-    if (!alarmPlayer) {
-      alarmPlayer = createAudioPlayer(
+      fallbackPlayer ??= createAudioPlayer(
         require("../assets/sounds/rest_alarm.wav"),
       );
+      fallbackPlayer.volume = 1;
+      await fallbackPlayer.seekTo(0);
+      fallbackPlayer.play();
+    } catch (error) {
+      console.warn("[rest-notifications] in-app sound failed", error);
     }
-
-    alarmPlayer.volume = 1;
-    await alarmPlayer.seekTo(0);
-    alarmPlayer.play();
-  } catch (error) {
-    console.warn("[rest-notifications] in-app sound failed", error);
-  }
-}
-
-/** Foreground alert when a rest timer reaches zero: sound + strong haptics. */
-export function playRestFinishedAlert() {
-  Vibration.vibrate([0, 500, 200, 500, 200, 800]);
-  void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-  setTimeout(
-    () => void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy),
-    250,
-  );
-  setTimeout(
-    () => void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning),
-    600,
-  );
-  void playAlarmSound();
+  })();
 }

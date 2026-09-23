@@ -4,11 +4,14 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 
+import type { LoadRecord } from "./load-progress";
 import { queueOfflineAction } from "./offline-queue";
+import { DEFAULT_WEIGHT_UNIT, isWeightUnit, type WeightUnit } from "./weight-units";
 import { taurosRequest } from "./tauros-api";
 import type { TaurosAuthUser } from "./tauros-session";
 import { useTaurosSession } from "./tauros-session";
@@ -173,8 +176,55 @@ type BackendState = {
   toggleRoutineExerciseCompletion: (
     rutinaEjercicioId: string,
   ) => Promise<{ queued: boolean }>;
+  /** Latest recorded load (kg) per base ejercicioId, from the server. */
+  latestLoads: Record<string, number>;
+  recordExerciseLoad: (
+    payload: RecordLoadPayload,
+  ) => Promise<{ queued: boolean; record: LoadRecord }>;
+  fetchLoadHistory: (ejercicioId: string) => Promise<LoadRecord[]>;
   loginUser: TaurosAuthUser | null;
 };
+
+export type RecordLoadPayload = {
+  /** Base exercise id (never the rutinaEjercicioId). */
+  ejercicioId: string;
+  cargaKg: number;
+  /** Unit the user typed the load in. */
+  unidad: WeightUnit;
+  rutinaEjercicioId?: string;
+};
+
+/** Offline-queue kind for load records (see lib/offline-queue.ts). */
+export const RECORD_LOAD_ACTION_KIND = "record-load";
+
+type RawLoadRecord = Partial<Omit<LoadRecord, "cargaKg" | "unidad">> & {
+  cargaKg?: number | string | null;
+  unidad?: string | null;
+};
+
+function normalizeLoadRecord(raw: RawLoadRecord): LoadRecord | null {
+  const cargaKg = Number(raw?.cargaKg);
+  if (!raw?.ejercicioId || !Number.isFinite(cargaKg)) {
+    return null;
+  }
+
+  return {
+    registroCargaId: String(
+      raw.registroCargaId ?? `${raw.ejercicioId}-${raw.fechaRegistro ?? ""}`,
+    ),
+    ejercicioId: raw.ejercicioId,
+    rutinaEjercicioId: raw.rutinaEjercicioId ?? null,
+    cargaKg,
+    unidad: isWeightUnit(raw.unidad) ? raw.unidad : DEFAULT_WEIGHT_UNIT,
+    fechaRegistro: String(raw.fechaRegistro ?? new Date().toISOString()),
+  };
+}
+
+function normalizeLoadRecords(value: unknown): LoadRecord[] {
+  return safeArray<RawLoadRecord>(value)
+    .map(normalizeLoadRecord)
+    .filter((record): record is LoadRecord => record !== null);
+}
 
 function safeArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
@@ -285,8 +335,15 @@ function normalizePlansResponse(value: unknown): BackendPlan[] {
 // underneath it in the navigation stack kept showing stale data until the
 // whole app was restarted.
 function useTaurosBackendState(): BackendState {
-  const { token, user, loadingSession, setPersistentWeight, persistentWeight } =
+  const { token, user, loadingSession, syncWeightFromServer } =
     useTaurosSession();
+  // Held in a ref so refresh() keeps a stable identity: the session recreates
+  // this function whenever the weight changes, which must not re-trigger a
+  // full backend refresh.
+  const syncWeightRef = useRef(syncWeightFromServer);
+  useEffect(() => {
+    syncWeightRef.current = syncWeightFromServer;
+  }, [syncWeightFromServer]);
   const [exercises, setExercises] = useState<BackendExercise[]>([]);
   const [plans, setPlans] = useState<BackendPlan[]>([]);
   const [events, setEvents] = useState<BackendEvent[]>([]);
@@ -296,6 +353,7 @@ function useTaurosBackendState(): BackendState {
     [],
   );
   const [profile, setProfile] = useState<BackendProfile | null>(null);
+  const [latestLoads, setLatestLoads] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -308,11 +366,27 @@ function useTaurosBackendState(): BackendState {
       setSuggestions([]);
       setNutritionPlans([]);
       setProfile(null);
+      setLatestLoads({});
       return;
     }
 
     setLoading(true);
     setError("");
+
+    // Independent of the catalog requests: it never throws and keeps the
+    // local weight when offline.
+    void syncWeightRef.current();
+
+    // Independent too: offline or not deployed yet keeps the previous values.
+    void taurosRequest<unknown>("/registro-carga/me/latest", { token })
+      .then((response) => {
+        const byExercise: Record<string, number> = {};
+        for (const record of normalizeLoadRecords(response)) {
+          byExercise[record.ejercicioId] = record.cargaKg;
+        }
+        setLatestLoads(byExercise);
+      })
+      .catch(() => undefined);
 
     try {
       const nutritionPlansPromise = user?.userId
@@ -426,13 +500,91 @@ function useTaurosBackendState(): BackendState {
         await queueOfflineAction({
           id: `toggle-exercise-completion-${rutinaEjercicioId}-${Date.now()}`,
           kind: "toggle-exercise-completion",
+          userId: user?.userId ?? "",
           path,
           method: "PATCH",
         });
         return { queued: true };
       }
     },
-    [refresh, token],
+    [refresh, token, user?.userId],
+  );
+
+  const recordExerciseLoad = useCallback(
+    async (
+      payload: RecordLoadPayload,
+    ): Promise<{ queued: boolean; record: LoadRecord }> => {
+      if (!token) {
+        throw new Error("Debes iniciar sesion para registrar la carga");
+      }
+
+      const path = "/registro-carga";
+      const body = JSON.stringify({
+        ejercicioId: payload.ejercicioId,
+        cargaKg: payload.cargaKg,
+        unidad: payload.unidad,
+        ...(payload.rutinaEjercicioId
+          ? { rutinaEjercicioId: payload.rutinaEjercicioId }
+          : {}),
+      });
+      const localRecord: LoadRecord = {
+        registroCargaId: `local-${Date.now()}`,
+        ejercicioId: payload.ejercicioId,
+        rutinaEjercicioId: payload.rutinaEjercicioId ?? null,
+        cargaKg: payload.cargaKg,
+        unidad: payload.unidad,
+        fechaRegistro: new Date().toISOString(),
+      };
+
+      setLatestLoads((current) => ({
+        ...current,
+        [payload.ejercicioId]: payload.cargaKg,
+      }));
+
+      try {
+        const response = await taurosRequest<RawLoadRecord>(path, {
+          method: "POST",
+          token,
+          body,
+        });
+        return {
+          queued: false,
+          record: normalizeLoadRecord(response) ?? localRecord,
+        };
+      } catch (error) {
+        if (!(error instanceof TypeError)) {
+          throw error;
+        }
+
+        // Offline: replayed later by lib/tauros-session.tsx. The server
+        // stamps fechaRegistro when the replay arrives.
+        await queueOfflineAction({
+          id: `${RECORD_LOAD_ACTION_KIND}-${payload.ejercicioId}-${Date.now()}`,
+          kind: RECORD_LOAD_ACTION_KIND,
+          userId: user?.userId ?? "",
+          path,
+          method: "POST",
+          body,
+        });
+        return { queued: true, record: localRecord };
+      }
+    },
+    [token, user?.userId],
+  );
+
+  const fetchLoadHistory = useCallback(
+    async (ejercicioId: string) => {
+      if (!token || !ejercicioId) {
+        return [];
+      }
+
+      const response = await taurosRequest<unknown>(
+        `/registro-carga/me?ejercicioId=${encodeURIComponent(ejercicioId)}`,
+        { token },
+      );
+      return normalizeLoadRecords(response);
+    },
+    [token],
   );
 
   return useMemo(
@@ -450,6 +602,9 @@ function useTaurosBackendState(): BackendState {
       registerForEvent,
       createSuggestion,
       toggleRoutineExerciseCompletion,
+      latestLoads,
+      recordExerciseLoad,
+      fetchLoadHistory,
       loginUser: user,
     }),
     [
@@ -466,6 +621,9 @@ function useTaurosBackendState(): BackendState {
       refresh,
       registerForEvent,
       toggleRoutineExerciseCompletion,
+      latestLoads,
+      recordExerciseLoad,
+      fetchLoadHistory,
       user,
     ],
   );

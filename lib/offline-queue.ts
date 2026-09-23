@@ -22,8 +22,12 @@ export type QueuedAction = {
   id: string;
   /** What this action represents (for future branching, not required yet). */
   kind: string;
+  /** Owner: only replayed with this user's session. */
+  userId: string;
   path: string;
   method: "PATCH" | "POST" | "PUT" | "DELETE";
+  /** Serialized JSON body, for writes that carry a payload. */
+  body?: string;
   queuedAt: number;
 };
 
@@ -67,6 +71,12 @@ export async function getQueuedActionsCount(): Promise<number> {
   return queue.length;
 }
 
+/** Whether this user still has an action of this kind waiting to be replayed. */
+export async function hasQueuedAction(kind: string, userId: string | undefined): Promise<boolean> {
+  const queue = await readQueue();
+  return queue.some((action) => action.kind === kind && action.userId === userId);
+}
+
 /**
  * A network-unreachable failure (fetch itself couldn't complete) throws a
  * plain TypeError in both the browser and React Native's fetch polyfill.
@@ -75,44 +85,56 @@ export async function getQueuedActionsCount(): Promise<number> {
  * "try again later" from "the server actually answered, this is a real
  * error, don't retry it forever".
  */
-function isConnectivityError(error: unknown): boolean {
-  return error instanceof TypeError;
+function isPermanentRejection(error: unknown): boolean {
+  // Only a genuine 4xx rejection (400/403/404/409/422...) can never succeed.
+  // Offline (TypeError), session expired (401), timeouts/rate limits and 5xx
+  // are retried later instead of losing the user's data.
+  const status = (error as { status?: unknown } | null)?.status;
+  return (
+    typeof status === "number" &&
+    status >= 400 &&
+    status < 500 &&
+    ![401, 408, 429].includes(status)
+  );
 }
 
-/** Replays queued actions in order against the real backend. No-op without a token. */
-export function flushOfflineQueue(token: string | null): Promise<void> {
-  if (!token) {
+/**
+ * Replays this user's queued actions, in order, with their token. Other users'
+ * actions stay queued for their own next session (the queue is device-wide);
+ * legacy entries without an owner are dropped since they can't be attributed.
+ */
+export function flushOfflineQueue(token: string | null, userId: string | undefined): Promise<void> {
+  if (!token || !userId) {
     return Promise.resolve();
   }
 
   return enqueue(async () => {
-    let queue = await readQueue();
+    let queue = (await readQueue()).filter((action) => Boolean(action.userId));
+    await writeQueue(queue);
 
-    while (queue.length > 0) {
-      const [next, ...rest] = queue;
-
+    for (const next of queue.filter((action) => action.userId === userId)) {
       try {
-        await taurosRequest(next.path, { method: next.method, token });
-        queue = rest;
-        await writeQueue(queue);
+        await taurosRequest(next.path, {
+          method: next.method,
+          token,
+          body: next.body,
+        });
       } catch (error) {
-        if (isConnectivityError(error)) {
-          // Still offline (or the server is unreachable) — stop here, keep
-          // this action and everything after it queued for next time.
+        if (!isPermanentRejection(error)) {
+          // Retryable: keep this action and everything after it, in order.
           return;
         }
 
-        // The server answered with a real error (stale id, forbidden,
-        // etc.) — this action can never succeed as-is. Drop it so it
+        // Rejected for good (stale id, validation...): drop it so it
         // doesn't jam the rest of the queue forever, and move on.
         console.warn(
           `[offline-queue] dropping "${next.id}" (${next.method} ${next.path}): ${
             error instanceof Error ? error.message : String(error)
           }`,
         );
-        queue = rest;
-        await writeQueue(queue);
       }
+      queue = queue.filter((action) => action !== next);
+      await writeQueue(queue);
     }
   });
 }

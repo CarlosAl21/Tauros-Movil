@@ -22,6 +22,7 @@ import {
     pickLatestAssignedPlan,
 } from "@/lib/tauros-mappers";
 import { useTaurosSession } from "@/lib/tauros-session";
+import { formatCarga } from "@/lib/weight-units";
 import { useOfflineRoutine } from "@/hooks/useOfflineRoutine";
 import { useSafeBack } from "@/hooks/use-safe-back";
 import { TaurosSuggestionForm } from "../../components/tauros-suggestion-form";
@@ -34,7 +35,7 @@ export default function PlanDetailScreen() {
   const params = useLocalSearchParams<{ id?: string; day?: string }>();
   const planId = Array.isArray(params.id) ? params.id[0] : params.id;
   const dayId = Array.isArray(params.day) ? params.day[0] : params.day;
-  const { token, user } = useTaurosSession();
+  const { token, user, weightUnit } = useTaurosSession();
   const { exercises, plans, toggleRoutineExerciseCompletion } =
     useTaurosBackend();
   const { getRoutine } = useOfflineRoutine();
@@ -336,7 +337,7 @@ export default function PlanDetailScreen() {
                           )}
                         </Text>
                         <Text style={styles.exerciseCharge}>
-                          Carga: {exercise.carga || "-"}
+                          Carga: {formatCarga(exercise.carga, weightUnit) || "-"}
                         </Text>
                         <Text style={styles.exerciseNotes}>
                           {exercise.notas}

@@ -3,7 +3,8 @@ import * as SecureStore from 'expo-secure-store';
 import { ReactNode, createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 
-import { flushOfflineQueue, OFFLINE_ACTIONS_QUEUE_KEY } from './offline-queue';
+import { flushOfflineQueue, hasQueuedAction, OFFLINE_ACTIONS_QUEUE_KEY, queueOfflineAction } from './offline-queue';
+import { DEFAULT_WEIGHT_UNIT, isWeightUnit, type WeightUnit } from './weight-units';
 import { taurosRequest, registerSessionExpiredCallback, unregisterSessionExpiredCallback, REFRESH_TOKEN_SECURE_KEY } from './tauros-api';
 
 export type TaurosAuthUser = {
@@ -37,10 +38,18 @@ type TaurosSessionContextValue = {
   login: (payload: TaurosLoginPayload) => Promise<void>;
   register: (payload: TaurosRegisterPayload) => Promise<void>;
   logout: () => Promise<void>;
-  setPersistentWeight: (value: number) => Promise<void>;
+  /** Saves the body weight; `queued` is true when it was stored offline for later sync. */
+  setPersistentWeight: (value: number) => Promise<{ queued: boolean }>;
+  /** Pulls the latest body weight from the server (keeps the local value on failure). */
+  syncWeightFromServer: () => Promise<void>;
+  /** Body weight in kg (canonical unit). */
   persistentWeight: number;
+  /** Display/input unit chosen by the user. Stored values stay in kg. */
+  weightUnit: WeightUnit;
+  setWeightUnit: (unit: WeightUnit) => Promise<void>;
+  /** Last load used per exercise, in kg (local only, never sent). */
   getExerciseWeight: (exerciseId: string) => Promise<number>;
-  setExerciseWeight: (exerciseId: string, value: number) => Promise<void>;
+  setExerciseWeight: (exerciseId: string, valueKg: number) => Promise<void>;
   updateUser: (nextUser: Partial<TaurosAuthUser>) => Promise<void>;
   updateProfile: (payload: Partial<Pick<TaurosAuthUser, 'nombre' | 'apellido' | 'correo'>>) => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
@@ -51,11 +60,18 @@ const TOKEN_KEY = 'tauros_mobile_token';
 const USER_KEY = 'tauros_mobile_user';
 const WEIGHT_KEY_PREFIX = 'tauros_mobile_weight';
 const EXERCISE_WEIGHTS_KEY_PREFIX = 'tauros_mobile_exercise_weights';
+const WEIGHT_UNIT_KEY_PREFIX = 'tauros_mobile_weight_unit';
 // Personal offline caches (mirrors the raw keys used in app/(tabs)/planes.tsx
 // and hooks/useOfflineRoutine.ts) — cleared on account deletion, unlike the
 // generic exercise catalog and media cache which hold no personal data.
 const OFFLINE_PLANS_KEY = 'offline_plans_list';
 const OFFLINE_ROUTINE_KEY = 'offline_routines';
+const WEIGHT_ACTION_KIND = 'set-body-weight';
+
+type LatestWeightResponse = {
+  peso: number | string | null;
+  fechaRegistro: string | null;
+};
 
 const TaurosSessionContext = createContext<TaurosSessionContextValue | null>(null);
 
@@ -63,9 +79,16 @@ export function TaurosSessionProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<TaurosAuthUser | null>(null);
   const [persistentWeight, setPersistentWeightState] = useState(0);
+  const [weightUnit, setWeightUnitState] = useState<WeightUnit>(DEFAULT_WEIGHT_UNIT);
   const [loadingSession, setLoadingSession] = useState(true);
   // Use a ref to hold logout so the registered callback is always current
   const logoutRef = useRef<(() => Promise<void>) | null>(null);
+  // Guards async weight syncs against a logout/account switch mid-request.
+  const currentUserIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    currentUserIdRef.current = user?.userId ?? null;
+  }, [user?.userId]);
 
   useEffect(() => {
     const loadSession = async () => {
@@ -84,14 +107,14 @@ export function TaurosSessionProvider({ children }: { children: ReactNode }) {
 
         if (parsedUser) {
           setUser(parsedUser);
-          const userWeight = await AsyncStorage.getItem(getWeightKey(parsedUser.userId));
-          const parsedWeight = Number(userWeight);
-          setPersistentWeightState(Number.isFinite(parsedWeight) ? parsedWeight : 0);
-        } else if (storedWeight) {
-          const parsedWeight = Number(storedWeight);
-          setPersistentWeightState(Number.isFinite(parsedWeight) ? 0 : 0);
+          const [userWeight, userUnit] = await Promise.all([
+            AsyncStorage.getItem(getWeightKey(parsedUser.userId)),
+            AsyncStorage.getItem(getWeightUnitKey(parsedUser.userId)),
+          ]);
+          setPersistentWeightState(parseStoredWeight(userWeight));
+          setWeightUnitState(isWeightUnit(userUnit) ? userUnit : DEFAULT_WEIGHT_UNIT);
         } else {
-          setPersistentWeightState(0);
+          setPersistentWeightState(parseStoredWeight(storedWeight));
         }
       } finally {
         setLoadingSession(false);
@@ -113,31 +136,84 @@ export function TaurosSessionProvider({ children }: { children: ReactNode }) {
   // Replay anything queued while offline (see lib/offline-queue.ts) as soon
   // as there is a session, and again every time the app comes back to the
   // foreground — that's the moment connectivity most likely returned.
+  // This effect runs after a session restore and after login/register, so it
+  // is also where the latest weight is pulled from the server: only after the
+  // flush, so a weight saved offline reaches the server before it is read back.
+  const sessionUserId = user?.userId;
   useEffect(() => {
     if (!token) {
       return;
     }
 
-    void flushOfflineQueue(token);
+    void flushOfflineQueue(token, sessionUserId).then(() =>
+      sessionUserId ? syncWeightFor(token, sessionUserId) : undefined,
+    );
 
     const subscription = AppState.addEventListener(
       'change',
       (nextAppState: AppStateStatus) => {
         if (nextAppState === 'active') {
-          void flushOfflineQueue(token);
+          void flushOfflineQueue(token, sessionUserId);
         }
       },
     );
 
     return () => subscription.remove();
-  }, [token]);
+    // syncWeightFor only uses setters/refs; token and userId are the triggers.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, sessionUserId]);
+
+  const applyWeight = async (userId: string, value: number) => {
+    setPersistentWeightState(value);
+    await AsyncStorage.setItem(getWeightKey(userId), String(value));
+  };
+
+  const syncWeightFor = async (authToken: string, userId: string) => {
+    try {
+      const latest = await taurosRequest<LatestWeightResponse>('/composicion-corporal/me/latest', {
+        token: authToken,
+      });
+      const peso = latest?.peso === null || latest?.peso === undefined ? NaN : Number(latest.peso);
+      if (!Number.isFinite(peso) || peso <= 0) {
+        return;
+      }
+
+      // A weight saved offline that has not been replayed yet is newer than
+      // anything the server can return: keep the pending local value.
+      if (await hasQueuedAction(WEIGHT_ACTION_KIND, userId)) {
+        return;
+      }
+
+      if (currentUserIdRef.current !== userId) {
+        return;
+      }
+
+      await applyWeight(userId, peso);
+    } catch {
+      // Offline or server unavailable: the locally stored weight stays as is.
+    }
+  };
+
+  const syncWeightFromServer = async () => {
+    if (!token || !user) {
+      return;
+    }
+
+    await syncWeightFor(token, user.userId);
+  };
 
   const persistAuth = async (nextToken: string, nextUser: TaurosAuthUser, refreshToken?: string) => {
+    // Local value first (instant, works offline). It is read before the token
+    // is set so it can never land after the server sync that the session
+    // effect above starts as soon as the token changes.
+    const [storedWeight, storedUnit] = await Promise.all([
+      AsyncStorage.getItem(getWeightKey(nextUser.userId)),
+      AsyncStorage.getItem(getWeightUnitKey(nextUser.userId)),
+    ]);
+    setPersistentWeightState(parseStoredWeight(storedWeight));
+    setWeightUnitState(isWeightUnit(storedUnit) ? storedUnit : DEFAULT_WEIGHT_UNIT);
     setToken(nextToken);
     setUser(nextUser);
-    const storedWeight = await AsyncStorage.getItem(getWeightKey(nextUser.userId));
-    const parsedWeight = Number(storedWeight);
-    setPersistentWeightState(Number.isFinite(parsedWeight) ? parsedWeight : 0);
     await Promise.all([
       AsyncStorage.setItem(TOKEN_KEY, nextToken),
       AsyncStorage.setItem(USER_KEY, JSON.stringify(nextUser)),
@@ -209,6 +285,7 @@ export function TaurosSessionProvider({ children }: { children: ReactNode }) {
       AsyncStorage.removeItem(OFFLINE_ACTIONS_QUEUE_KEY),
       deletedUserId ? AsyncStorage.removeItem(getWeightKey(deletedUserId)) : Promise.resolve(),
       deletedUserId ? AsyncStorage.removeItem(getExerciseWeightsKey(deletedUserId)) : Promise.resolve(),
+      deletedUserId ? AsyncStorage.removeItem(getWeightUnitKey(deletedUserId)) : Promise.resolve(),
     ]);
   };
 
@@ -255,6 +332,7 @@ export function TaurosSessionProvider({ children }: { children: ReactNode }) {
     setToken(null);
     setUser(null);
     setPersistentWeightState(0);
+    setWeightUnitState(DEFAULT_WEIGHT_UNIT);
     await Promise.all([
       AsyncStorage.removeItem(TOKEN_KEY),
       AsyncStorage.removeItem(USER_KEY),
@@ -271,17 +349,42 @@ export function TaurosSessionProvider({ children }: { children: ReactNode }) {
       throw new Error('Debes iniciar sesion');
     }
 
-    await taurosRequest('/composicion-corporal', {
-      method: 'POST',
-      token,
-      body: JSON.stringify({
-        peso: value,
-        usuarioId: user.userId,
-      }),
+    const path = '/composicion-corporal';
+    const body = JSON.stringify({
+      peso: value,
+      usuarioId: user.userId,
     });
 
-    setPersistentWeightState(value);
-    await AsyncStorage.setItem(getWeightKey(user.userId), String(value));
+    let queued = false;
+    try {
+      await taurosRequest(path, { method: 'POST', token, body });
+    } catch (error) {
+      if (!(error instanceof TypeError)) {
+        // The server answered with a real error: surface it.
+        throw error;
+      }
+
+      // Network unreachable: keep it locally and replay it later.
+      await queueOfflineAction({
+        id: `${WEIGHT_ACTION_KIND}-${Date.now()}`,
+        kind: WEIGHT_ACTION_KIND,
+        userId: user.userId,
+        path,
+        method: 'POST',
+        body,
+      });
+      queued = true;
+    }
+
+    await applyWeight(user.userId, value);
+    return { queued };
+  };
+
+  const setWeightUnit = async (unit: WeightUnit) => {
+    setWeightUnitState(unit);
+    if (user) {
+      await AsyncStorage.setItem(getWeightUnitKey(user.userId), unit);
+    }
   };
 
   const readExerciseWeights = async () => {
@@ -335,20 +438,32 @@ export function TaurosSessionProvider({ children }: { children: ReactNode }) {
     register,
     logout,
     setPersistentWeight,
+    syncWeightFromServer,
     persistentWeight,
+    weightUnit,
+    setWeightUnit,
     updateUser,
     updateProfile,
     changePassword,
     deleteAccount,
     getExerciseWeight,
     setExerciseWeight,
-  }), [loadingSession, persistentWeight, token, user]);
+  }), [loadingSession, persistentWeight, token, user, weightUnit]);
 
   return <TaurosSessionContext.Provider value={value}>{children}</TaurosSessionContext.Provider>;
 }
 
+function parseStoredWeight(raw: string | null) {
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
 function getWeightKey(userId: string) {
   return `${WEIGHT_KEY_PREFIX}:${userId}`;
+}
+
+function getWeightUnitKey(userId: string) {
+  return `${WEIGHT_UNIT_KEY_PREFIX}:${userId}`;
 }
 
 function getExerciseWeightsKey(userId?: string | null) {

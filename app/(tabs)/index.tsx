@@ -17,6 +17,7 @@ import {
     pickLatestAssignedPlan,
 } from "@/lib/tauros-mappers";
 import { useTaurosSession } from "@/lib/tauros-session";
+import { formatWeight } from "@/lib/weight-units";
 
 const MOTIVATIONS = [
   "Un entrenamiento más te acerca a tu mejor versión.",
@@ -31,7 +32,7 @@ function pickMotivation() {
 }
 
 export default function HomeScreen() {
-  const { token, user, persistentWeight } = useTaurosSession();
+  const { token, user, persistentWeight, weightUnit } = useTaurosSession();
   const { plans, events, loading } = useTaurosBackend();
   const [motivation] = useState(() => pickMotivation());
 
@@ -118,7 +119,11 @@ export default function HomeScreen() {
           />
           <TaurosStat
             label="Peso"
-            value={persistentWeight ? `${persistentWeight} kg` : "Pendiente"}
+            value={
+              persistentWeight
+                ? formatWeight(persistentWeight, weightUnit)
+                : "Pendiente"
+            }
             icon={
               <MaterialCommunityIcons
                 name="scale-bathroom"

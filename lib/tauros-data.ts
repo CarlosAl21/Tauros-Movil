@@ -15,14 +15,15 @@ export type TaurosExercise = {
   tiempoSegundos?: number | null;
   calentamientos?: TaurosWarmup[];
   maquina: TaurosMachine | null;
-  series: string;
-  repeticiones: string;
-  descanso: string;
-  cargaSugerida: string;
-  notas: string;
-  musculos: string[];
-  activacion: string[];
-  thumbnail: string;
+  // Not provided by the catalog endpoint: routine-only or optional data.
+  series?: string;
+  repeticiones?: string;
+  descanso?: string;
+  cargaSugerida?: string;
+  notas?: string;
+  musculos?: string[];
+  activacion?: string[];
+  thumbnail?: string;
 };
 
 export type TaurosPlanExercise = {
