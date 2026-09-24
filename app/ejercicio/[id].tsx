@@ -26,6 +26,7 @@ import { useRestTimer } from "@/hooks/use-rest-timer";
 import { useSafeBack } from "@/hooks/use-safe-back";
 import {
     ensureNotificationsReady,
+    ensureRestAlarmReady,
     notifyNow,
     playRestFinishedFallbackAlert,
 } from "@/lib/rest-notifications";
@@ -291,10 +292,12 @@ export default function ExerciseDetailScreen() {
   }, [activeRoutineId, exerciseId, stopRest, stopWarmupRest]);
 
   useEffect(() => {
-    // Ask for notification permission (and create the Android channel) as soon
-    // as the user reaches an exercise, not when the first rest ends.
-    void ensureNotificationsReady();
-  }, []);
+    // Ask for notification permission (and create the Android channels) as
+    // soon as the user reaches an exercise, not when the first rest ends. In
+    // a routine, also ask for exact-alarm access before the first rest starts
+    // so the background rest alarm rings on time.
+    void (isRoutineContext ? ensureRestAlarmReady() : ensureNotificationsReady());
+  }, [isRoutineContext]);
 
   useEffect(() => {
     if (!screenNotice) {

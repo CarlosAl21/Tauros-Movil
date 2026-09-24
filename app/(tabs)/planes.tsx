@@ -33,7 +33,9 @@ export default function PlansScreen() {
   const lastSavedRef = useRef<string>("");
   useEffect(() => {
     if (!plans.length) return;
-    const key = plans.map((p) => p.planEntrenamientoId).join(",");
+    // Keyed on the content, not only the plan ids: completion changes must
+    // reach the offline caches too, or offline screens show stale progress.
+    const key = JSON.stringify(plans);
     if (key === lastSavedRef.current) return;
     lastSavedRef.current = key;
 
@@ -56,11 +58,7 @@ export default function PlansScreen() {
   }, [exercises]);
 
   // When network fetch fails, fall back to locally cached plans
-  useEffect(() => {
-    if (!error) {
-      setIsOffline(false);
-      return;
-    }
+  const loadOfflinePlans = useCallback(() => {
     AsyncStorage.getItem(OFFLINE_PLANS_KEY)
       .then((raw) => {
         if (raw) {
@@ -69,12 +67,32 @@ export default function PlansScreen() {
         }
       })
       .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!error) {
+      setIsOffline(false);
+      return;
+    }
+    loadOfflinePlans();
+  }, [error, loadOfflinePlans]);
+
+  // Ref, not a dependency: refresh() toggles `error`, which would re-run the
+  // focus effect and refetch in a loop while offline.
+  const errorRef = useRef(error);
+  useEffect(() => {
+    errorRef.current = error;
   }, [error]);
 
   useFocusEffect(
     useCallback(() => {
       void refresh();
-    }, [refresh]),
+      // Offline, completions toggled on other screens only land in the
+      // cache: re-read it so the progress shown here is current.
+      if (errorRef.current) {
+        loadOfflinePlans();
+      }
+    }, [loadOfflinePlans, refresh]),
   );
 
   const activePlans = isOffline ? offlinePlans : plans;

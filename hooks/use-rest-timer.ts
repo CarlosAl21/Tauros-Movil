@@ -4,12 +4,14 @@ import { AppState } from "react-native";
 import {
   cancelRestNotification,
   dismissRestNotification,
+  restAlarmIsExact,
   scheduleRestNotification,
+  settleExpiredRestAlarm,
   type RestTimerKind,
 } from "@/lib/rest-notifications";
 
 // A finish detected this late means the app was away (JS suspended) when the
-// rest ended, so the system alarm already rang.
+// rest ended: the system alarm should have rung already.
 const LATE_FINISH_MS = 2000;
 
 type RestFinishedInfo = {
@@ -35,7 +37,7 @@ export function useRestTimer(
   const [endsAt, setEndsAt] = useState<number | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(0);
   const systemAlarmRef = useRef(false);
-  // The alarm fired while the app was away: dismiss it when the user is back.
+  // The rest ended while the app was away: settle it when the user is back.
   const firedAwayRef = useRef(false);
   // Discards schedule results that resolve after the rest was replaced/stopped.
   const generationRef = useRef(0);
@@ -50,6 +52,39 @@ export function useRestTimer(
       return;
     }
 
+    // The countdown hit zero with the app in the foreground. `late` means the
+    // user just came back after the rest ended in the background.
+    const finish = (late: boolean) => {
+      const systemAlarm = systemAlarmRef.current;
+      const generation = generationRef.current;
+
+      if (systemAlarm && !late && restAlarmIsExact()) {
+        // Exact alarm: it is ringing right now; never touch it.
+        onFinishedRef.current({ systemAlarm: true });
+        return;
+      }
+
+      if (!systemAlarm) {
+        onFinishedRef.current({ systemAlarm: false });
+        return;
+      }
+
+      // Inexact alarm (no exact-alarm access) or back from the background:
+      // if the notification is still pending it did not ring on time, so it
+      // is cancelled and the user is alerted in-app instead.
+      void settleExpiredRestAlarm(kind).then((rang) => {
+        if (generationRef.current !== generation) {
+          return; // A new rest started meanwhile.
+        }
+        if (rang && late) {
+          // Rang while away and the user is back: just clear the tray.
+          void dismissRestNotification(kind);
+          return;
+        }
+        onFinishedRef.current({ systemAlarm: rang });
+      });
+    };
+
     const tick = () => {
       const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
       setSecondsLeft(remaining);
@@ -57,24 +92,16 @@ export function useRestTimer(
         return;
       }
 
-      // Natural expiry: the system alarm is ringing right now. It must never
-      // be cancelled or dismissed from here.
+      // Natural expiry: an exact system alarm is ringing right now and must
+      // never be cancelled or dismissed from here.
       setEndsAt(null);
-      const systemAlarm = systemAlarmRef.current;
 
       if (AppState.currentState !== "active") {
         firedAwayRef.current = true;
         return;
       }
 
-      const late = Date.now() - endsAt > LATE_FINISH_MS;
-      if (late && systemAlarm) {
-        // Back in the app after it already rang: just clear the tray.
-        void dismissRestNotification(kind);
-        return;
-      }
-
-      onFinishedRef.current({ systemAlarm });
+      finish(Date.now() - endsAt > LATE_FINISH_MS);
     };
 
     tick();
@@ -96,7 +123,24 @@ export function useRestTimer(
     const subscription = AppState.addEventListener("change", (state) => {
       if (state === "active" && firedAwayRef.current) {
         firedAwayRef.current = false;
-        void dismissRestNotification(kind);
+        const generation = generationRef.current;
+        if (!systemAlarmRef.current) {
+          // Nothing could ring while away: alert now that the user is back.
+          onFinishedRef.current({ systemAlarm: false });
+          return;
+        }
+        // Same as a late finish: clear it if it rang, otherwise cancel the
+        // pending (late) alarm and alert in-app.
+        void settleExpiredRestAlarm(kind).then((rang) => {
+          if (generationRef.current !== generation) {
+            return;
+          }
+          if (rang) {
+            void dismissRestNotification(kind);
+            return;
+          }
+          onFinishedRef.current({ systemAlarm: false });
+        });
       }
     });
 

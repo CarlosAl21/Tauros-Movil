@@ -11,6 +11,12 @@ import {
 
 import type { LoadRecord } from "./load-progress";
 import { queueOfflineAction } from "./offline-queue";
+import {
+  applyExerciseCompletion,
+  findExerciseCompletion,
+  persistCachedExerciseCompletion,
+  readCachedExerciseCompletion,
+} from "./routine-completion";
 import { DEFAULT_WEIGHT_UNIT, isWeightUnit, type WeightUnit } from "./weight-units";
 import { taurosRequest } from "./tauros-api";
 import type { TaurosAuthUser } from "./tauros-session";
@@ -474,6 +480,23 @@ function useTaurosBackendState(): BackendState {
     [refresh, token],
   );
 
+  // Read by toggleRoutineExerciseCompletion without re-creating it on every
+  // plans change.
+  const plansRef = useRef(plans);
+  useEffect(() => {
+    plansRef.current = plans;
+  }, [plans]);
+
+  const applyCompletionLocally = useCallback(
+    (rutinaEjercicioId: string, completed: boolean) => {
+      setPlans((current) =>
+        applyExerciseCompletion(current, rutinaEjercicioId, completed),
+      );
+      void persistCachedExerciseCompletion(rutinaEjercicioId, completed);
+    },
+    [],
+  );
+
   const toggleRoutineExerciseCompletion = useCallback(
     async (rutinaEjercicioId: string): Promise<{ queued: boolean }> => {
       if (!token) {
@@ -484,14 +507,30 @@ function useTaurosBackendState(): BackendState {
 
       const path = `/rutina-ejercicio/${rutinaEjercicioId}/completada`;
 
+      // Optimistic update: every screen reading the shared plans (routine
+      // day, full routine, exercise detail) and the offline caches reflect the
+      // change right away, instead of waiting for the full refresh() or, when
+      // offline, never showing it until the queue is replayed.
+      const current =
+        findExerciseCompletion(plansRef.current, rutinaEjercicioId) ??
+        (await readCachedExerciseCompletion(rutinaEjercicioId));
+      const next = current === undefined ? undefined : !current;
+      if (next !== undefined) {
+        applyCompletionLocally(rutinaEjercicioId, next);
+      }
+
       try {
         await taurosRequest(path, { method: "PATCH", token });
+        // Reconcile with the server (it also recomputes the day state).
         await refresh();
         return { queued: false };
       } catch (error) {
         if (!(error instanceof TypeError)) {
           // The server actually answered (bad id, auth, etc.) — a real
-          // error, not a connectivity issue. Surface it as before.
+          // error, not a connectivity issue. Roll back and surface it.
+          if (next !== undefined) {
+            applyCompletionLocally(rutinaEjercicioId, !next);
+          }
           throw error;
         }
 
@@ -507,7 +546,7 @@ function useTaurosBackendState(): BackendState {
         return { queued: true };
       }
     },
-    [refresh, token, user?.userId],
+    [applyCompletionLocally, refresh, token, user?.userId],
   );
 
   const recordExerciseLoad = useCallback(

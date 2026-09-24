@@ -20,13 +20,23 @@ import {
  * - In the foreground the handler below presents it too (banner + sound), so
  *   the app never plays a second, in-app copy of the sound.
  *
+ * It is built exactly like the "exercise completed" notification (`notifyNow`,
+ * same content shape and the same channel setup, notification audio stream),
+ * the only differences being the date trigger and the rest sound file. On
+ * Android the JS timers are paused while the app is in the background, so
+ * only an OS-scheduled notification can ring there: firing `notifyNow` from
+ * the countdown would never run in the background.
+ *
  * The notification is only cancelled/dismissed on explicit user actions (skip,
  * stop, new rest, leaving the exercise, completing it) or after the user is
- * back in the app once it rang — never on natural expiry, which would kill the
- * alarm the moment it fires.
+ * back in the app — never on natural expiry, which would kill the alarm the
+ * moment it fires. Without the Android 12+ exact-alarm access the OS delivers
+ * it late; `settleExpiredRestAlarm` then cancels the late copy and the app
+ * alerts in-app instead, so it never rings twice nor out of context.
  *
  * The in-app sound (`playRestFinishedFallbackAlert`) is only a fallback for
- * when system notifications are unavailable (permission denied, Expo Go, web).
+ * when the system notification could not ring on time (permission denied,
+ * inexact alarm, Expo Go, web).
  *
  * The sound (`assets/sounds/rest_alarm.wav`) is bundled natively by the
  * `expo-notifications` config plugin (app.json `sounds`) and protected from
@@ -38,9 +48,15 @@ export type RestTimerKind = "interval" | "warmup";
 const REST_ALARM_SOUND_FILE = "rest_alarm.wav";
 // Android freezes channel settings at creation time, so the id carries a
 // version. Bump it and move the old id to LEGACY_CHANNEL_IDS on any change.
-const REST_CHANNEL_ID = "tauros-rest-alarm-v3";
+// v4: same setup as the general channel (notification stream) instead of the
+// v3 alarm stream + bypass-DND setup, which never rang in the background.
+const REST_CHANNEL_ID = "tauros-rest-alarm-v4";
 const GENERAL_CHANNEL_ID = "tauros-general";
-const LEGACY_CHANNEL_IDS = ["tauros-rest-reminder", "tauros-rest-alarm-v2"];
+const LEGACY_CHANNEL_IDS = [
+  "tauros-rest-reminder",
+  "tauros-rest-alarm-v2",
+  "tauros-rest-alarm-v3",
+];
 const VIBRATION_PATTERN = [0, 500, 200, 500, 200, 800];
 
 // Deterministic id per timer kind: scheduling again replaces the previous
@@ -83,22 +99,16 @@ function ensureAndroidChannels() {
       ),
     );
 
+    // Mirrors the general channel ("exercise completed", proven to ring in
+    // every app state); only the importance and the sound file differ. If the
+    // sound resource were missing, Android falls back to the default sound.
     await Notifications.setNotificationChannelAsync(REST_CHANNEL_ID, {
       name: "Fin del descanso",
-      description: "Alarma sonora cuando termina tu tiempo de descanso.",
+      description: "Aviso sonoro cuando termina tu tiempo de descanso.",
       importance: Notifications.AndroidImportance.MAX,
       sound: REST_ALARM_SOUND_FILE,
-      enableVibrate: true,
       vibrationPattern: VIBRATION_PATTERN,
       showBadge: false,
-      // Alarm stream: louder than the notification stream and not silenced
-      // by the "vibrate" ringer mode.
-      audioAttributes: {
-        usage: Notifications.AndroidAudioUsage.ALARM,
-        contentType: Notifications.AndroidAudioContentType.SONIFICATION,
-      },
-      // Only effective if the user granted Do Not Disturb access.
-      bypassDnd: true,
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     });
 
@@ -172,6 +182,28 @@ export async function ensureNotificationsReady(): Promise<boolean> {
 }
 
 /**
+ * Exercise screen entry: notification permission + channels, and the
+ * exact-alarm prompt before the first rest starts (not after it already
+ * started inexact).
+ */
+export async function ensureRestAlarmReady(): Promise<boolean> {
+  const ready = await ensureNotificationsReady();
+  if (ready) {
+    promptForExactAlarmsIfMissing();
+  }
+  return ready;
+}
+
+/**
+ * Whether a scheduled rest alarm rings at the exact second. False on Android
+ * 12+ without "Alarms & reminders" access: expo-notifications then falls back
+ * to an inexact alarm the OS may deliver long after the rest ended.
+ */
+export function restAlarmIsExact() {
+  return canScheduleExactAlarms() !== false;
+}
+
+/**
  * Android 12+ needs "Alarms & reminders" access for the alarm to fire at the
  * exact second (Android 14+ denies it by default); without it the OS may
  * deliver it minutes late. There is no runtime dialog, only a settings screen,
@@ -235,15 +267,10 @@ export function scheduleRestNotification(params: {
 
       await Notifications.scheduleNotificationAsync({
         identifier,
-        content: {
-          title: params.title,
-          body: params.body,
-          sound: REST_ALARM_SOUND_FILE,
-          // Pre-Android 8 devices use the per-notification priority.
-          priority: Notifications.AndroidNotificationPriority.MAX,
-          vibrate: VIBRATION_PATTERN,
-          data: { kind: "rest-finished", timer: params.kind },
-        },
+        content: buildContent(params.title, params.body, REST_ALARM_SOUND_FILE, {
+          kind: "rest-finished",
+          timer: params.kind,
+        }),
         trigger: {
           type: Notifications.SchedulableTriggerInputTypes.DATE,
           date: new Date(params.endsAt),
@@ -255,6 +282,54 @@ export function scheduleRestNotification(params: {
       console.warn("[rest-notifications] schedule failed", error);
       return false;
     }
+  });
+}
+
+/**
+ * Same content shape for every local notification (see notifyNow). The
+ * per-notification priority only matters before Android 8 (no channels).
+ */
+function buildContent(
+  title: string,
+  body: string,
+  sound: string,
+  data?: Record<string, unknown>,
+): Notifications.NotificationContentInput {
+  return {
+    title,
+    body,
+    sound,
+    priority: Notifications.AndroidNotificationPriority.MAX,
+    ...(data ? { data } : {}),
+  };
+}
+
+/**
+ * Called once the countdown reached zero and the app is in the foreground.
+ * Returns true when the system notification already rang (it is no longer
+ * pending), so the caller must not alert again. If it is still pending (late
+ * inexact alarm), it is cancelled so it cannot ring out of context, and false
+ * tells the caller to alert in-app now.
+ */
+export function settleExpiredRestAlarm(kind: RestTimerKind): Promise<boolean> {
+  if (!canUseSystemNotifications()) {
+    return Promise.resolve(false);
+  }
+
+  return enqueue(async () => {
+    const identifier = restIdentifier(kind);
+    try {
+      const pending = await Notifications.getAllScheduledNotificationsAsync();
+      if (!pending.some((item) => item.identifier === identifier)) {
+        // Already delivered. Not dismissed here: it may be ringing right now.
+        return true;
+      }
+    } catch {
+      // Unknown state: cancel below and alert in-app rather than stay silent.
+    }
+
+    await clearRestNotification(identifier);
+    return false;
   });
 }
 
@@ -302,7 +377,7 @@ export function notifyNow(title: string, body: string) {
 
     try {
       await Notifications.scheduleNotificationAsync({
-        content: { title, body, sound: "default" },
+        content: buildContent(title, body, "default"),
         trigger: { channelId: GENERAL_CHANNEL_ID },
       });
       return true;

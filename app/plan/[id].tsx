@@ -1,8 +1,8 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useRef, useState } from "react";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { TaurosAuthCard } from "@/components/tauros-auth-card";
 import {
@@ -23,6 +23,7 @@ import {
 } from "@/lib/tauros-mappers";
 import { useTaurosSession } from "@/lib/tauros-session";
 import { formatCarga } from "@/lib/weight-units";
+import { applyExerciseCompletion } from "@/lib/routine-completion";
 import { useOfflineRoutine } from "@/hooks/useOfflineRoutine";
 import { useSafeBack } from "@/hooks/use-safe-back";
 import { TaurosSuggestionForm } from "../../components/tauros-suggestion-form";
@@ -36,16 +37,16 @@ export default function PlanDetailScreen() {
   const planId = Array.isArray(params.id) ? params.id[0] : params.id;
   const dayId = Array.isArray(params.day) ? params.day[0] : params.day;
   const { token, user, weightUnit } = useTaurosSession();
-  const { exercises, plans, toggleRoutineExerciseCompletion } =
+  const { exercises, plans, refresh, toggleRoutineExerciseCompletion } =
     useTaurosBackend();
   const { getRoutine } = useOfflineRoutine();
   const [markingKey, setMarkingKey] = useState<string | null>(null);
 
-  // Cache-first: seed local state with any previously cached plan so the
-  // screen is immediately usable while the network fetch runs in background.
+  // Offline fallback: the cached plan is only rendered while the live plans
+  // (shared backend context) do not contain it yet, e.g. offline cold start.
   const [cachedPlan, setCachedPlan] = useState<BackendPlan | null>(null);
   const [cachedExercises, setCachedExercises] = useState<BackendExercise[]>([]);
-  useEffect(() => {
+  const loadCachedPlan = useCallback(() => {
     if (!planId) return;
     getRoutine(planId)
       .then(async (entry) => {
@@ -66,9 +67,23 @@ export default function PlanDetailScreen() {
         if (raw) setCachedExercises(JSON.parse(raw) as BackendExercise[]);
       })
       .catch(() => {});
-    // Only run on mount / when planId changes
+    // getRoutine is recreated on every render of useOfflineRoutine.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [planId]);
+
+  // Coming back from an exercise (or from the background of the stack) must
+  // show the latest completion state: re-read the offline cache and, except
+  // on the first focus (the provider already loaded), refetch from the server.
+  const hasFocusedRef = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      loadCachedPlan();
+      if (hasFocusedRef.current) {
+        void refresh();
+      }
+      hasFocusedRef.current = true;
+    }, [loadCachedPlan, refresh]),
+  );
 
   if (!token) {
     return (
@@ -80,16 +95,17 @@ export default function PlanDetailScreen() {
   }
 
   const displayExercises = mapBackendExercises(exercises.length ? exercises : cachedExercises);
-  // Merge live plans with the offline-cached plan so the screen renders
-  // immediately even before the network request completes.
-  const allRawPlans = cachedPlan
-    ? [
-        cachedPlan,
-        ...plans.filter(
-          (p) => p.planEntrenamientoId !== cachedPlan.planEntrenamientoId,
-        ),
-      ]
-    : plans;
+  // Live plans always win over the offline copy. The cached plan used to be
+  // put first and its live version filtered out, so a completion toggled
+  // here (or in the exercise screen) updated the shared state but this
+  // screen kept rendering the stale cached copy until it was re-entered.
+  const allRawPlans =
+    cachedPlan &&
+    !plans.some(
+      (p) => p.planEntrenamientoId === cachedPlan.planEntrenamientoId,
+    )
+      ? [cachedPlan, ...plans]
+      : plans;
   const displayPlans = mapBackendPlans(allRawPlans, user?.userId);
   const latestAssignedPlan = pickLatestAssignedPlan(
     displayPlans.filter((item) => !item.esPlantilla && item.activo),
@@ -153,9 +169,30 @@ export default function PlanDetailScreen() {
         item.rutinaEjercicioId === rutinaEjercicioId,
     );
 
+    // Offline cold start renders the cached copy (not in the shared plans):
+    // mirror the toggle there too so the row updates immediately.
+    const nextCompleted = !currentExercise?.completado;
+    const patchCachedPlan = (completed: boolean) =>
+      setCachedPlan((current) =>
+        current
+          ? applyExerciseCompletion([current], rutinaEjercicioId, completed)[0]
+          : current,
+      );
+
     try {
       setMarkingKey(rutinaEjercicioId);
-      await toggleRoutineExerciseCompletion(rutinaEjercicioId);
+      patchCachedPlan(nextCompleted);
+      try {
+        await toggleRoutineExerciseCompletion(rutinaEjercicioId);
+      } catch (error) {
+        // The shared plans were already rolled back by the backend context.
+        patchCachedPlan(!nextCompleted);
+        Alert.alert(
+          "No se pudo actualizar el ejercicio",
+          error instanceof Error ? error.message : "Intenta de nuevo.",
+        );
+        return;
+      }
 
       if (
         currentExercise &&
